@@ -1,59 +1,88 @@
 import FWCore.ParameterSet.Config as cms
 
+
 ntuplerBase = cms.EDAnalyzer("MuonHLTNtupler",
-	# -- information stored in edm file
-	triggerResults    = cms.untracked.InputTag("TriggerResults::HLT"),
-	triggerEvent      = cms.untracked.InputTag("hltTriggerSummaryAOD::HLT"),
-	offlineLumiScaler = cms.untracked.InputTag("scalersRawToDigi"),
-	offlineVertex     = cms.untracked.InputTag("offlinePrimaryVertices"),
-	offlineMuon       = cms.untracked.InputTag("muons"),
-	beamSpot          = cms.untracked.InputTag("hltOnlineBeamSpot"),
 
-	# -- newly created objects by HLT rerun
-	# -- new process name = "MYHLT"
-	myTriggerResults = cms.untracked.InputTag("TriggerResults",       "", "MYHLT"),
-	myTriggerEvent   = cms.untracked.InputTag("hltTriggerSummaryAOD", "", "MYHLT"),
-	lumiScaler       = cms.untracked.InputTag("hltScalersRawToDigi",  "", "MYHLT"),
+                             useHF = cms.bool( False ),
+                             drMax_HCAL = cms.double( 0.3 ),
 
-	L1Muon = cms.untracked.InputTag("hltGmtStage2Digis",       "Muon", "MYHLT"), # -- if L1 emulator is used
-	# L1Muon = cms.untracked.InputTag("gmtStage2Digis",          "Muon", "RECO"), # -- if L1 is not emulated
-	L2Muon = cms.untracked.InputTag("hltL2MuonCandidates",     "",     "MYHLT"),
-	L3Muon = cms.untracked.InputTag("hltIterL3MuonCandidates", "",     "MYHLT"),
-	TkMuon = cms.untracked.InputTag("hltHighPtTkMuonCands",    "",     "MYHLT"),
+                             drVetoBarrel_HCAL = cms.double( 0.1 ),
+                             drVetoEndcap_HCAL = cms.double( 0.1 ),
+                             etaStripBarrel_HCAL = cms.double( 0.0 ),
+                             etaStripEndcap_HCAL = cms.double( 0.0 ),
+                             energyBarrel_HCAL = cms.double( 0.0 ),
+                             energyEndcap_HCAL = cms.double( 0.0 ),
+                             doRhoCorrection_HCAL = cms.bool( True ),
+                             rhoMax_HCAL = cms.double( 9.9999999E7 ),
+                             rhoScale_HCAL = cms.double( 1.0 ),
+                             effectiveAreas_HCAL = cms.vdouble( 0.227, 0.372 ),
+                             absEtaLowEdges_HCAL = cms.vdouble( 0.0, 1.479 ),
 
-	ECALIsoMap = cms.untracked.InputTag("hltMuonEcalMFPFClusterIsoForMuons", "",               "MYHLT"),
-	HCALIsoMap = cms.untracked.InputTag("hltMuonHcalRegPFClusterIsoForMuons", "" ,              "MYHLT"),
-	trkIsoMap  = cms.untracked.InputTag("hltMuonTkRelIsolationCut0p08Map",               "trkIsoDeposits", "MYHLT"),
+                             drMax_ECAL = cms.double( 0.3 ),
+                             drVetoBarrel_ECAL = cms.double( 0.05 ),
+                             drVetoEndcap_ECAL = cms.double( 0.05 ),
+                             etaStripBarrel_ECAL = cms.double( 0.0 ),
+                             etaStripEndcap_ECAL = cms.double( 0.0 ),
+                             energyBarrel_ECAL = cms.double( 0.0 ),
+                             energyEndcap_ECAL = cms.double( 0.0 ),
+                             doRhoCorrection_ECAL = cms.bool( True ),
+                             rhoMax_ECAL = cms.double( 9.9999999E7 ),
+                             rhoScale_ECAL = cms.double( 1.0 ),
+                             effectiveAreas_ECAL = cms.vdouble( 0.35, 0.193 ),
+                             absEtaLowEdges_ECAL = cms.vdouble( 0.0, 1.479 ),
 
-	rho_ECAL = cms.untracked.InputTag("hltFixedGridRhoFastjetECALMFForMuons", "", "MYHLT"),
-	rho_HCAL = cms.untracked.InputTag("hltFixedGridRhoFastjetHCAL",           "", "MYHLT"),
+                             useEt = cms.bool( True ),
 
-	iterL3OI        = cms.untracked.InputTag("hltL3MuonsIterL3OI",                   "", "MYHLT"),
-	iterL3IOFromL2  = cms.untracked.InputTag("hltL3MuonsIterL3IO",                   "", "MYHLT"),
-	iterL3FromL2    = cms.untracked.InputTag("hltIterL3MuonsFromL2LinksCombination", "", "MYHLT"),
-	iterL3IOFromL1  = cms.untracked.InputTag("hltIter3IterL3FromL1MuonMerged",       "", "MYHLT"),
-	iterL3MuonNoID  = cms.untracked.InputTag("hltIterL3MuonsNoID",                   "", "MYHLT"),
-	iterL3Muon      = cms.untracked.InputTag("hltIterL3Muons",                       "", "MYHLT"),
+                             DepositLabel = cms.untracked.string( "PXLS" ),
+                             Diff_r = cms.double( 0.1 ),
+                             Diff_z = cms.double( 0.2 ),
+                             DR_Max = cms.double( 0.3 ),
+                             DR_Veto = cms.double( 0.01 ),
+                             NHits_Min = cms.uint32( 0 ),
+                             Chi2Ndof_Max = cms.double( 1.0E64 ),
+                             Chi2Prob_Min = cms.double( -1.0 ),
+                             Pt_Min = cms.double( -1.0 ),
+                             
+	                     # -- information stored in edm file
+	                     triggerResults    = cms.untracked.InputTag("TriggerResults::HLT"),
+	                     triggerEvent      = cms.untracked.InputTag("hltTriggerSummaryAOD::HLT"),
+	                     offlineLumiScaler = cms.untracked.InputTag("scalersRawToDigi"),
+	                     offlineVertex     = cms.untracked.InputTag("offlinePrimaryVertices"),
+	                     offlineMuon       = cms.untracked.InputTag("muons"),
+	                     beamSpot          = cms.untracked.InputTag("hltOnlineBeamSpot"),
 
-	hltIterL3MuonTrimmedPixelVertices                 = cms.untracked.InputTag("hltIterL3MuonTrimmedPixelVertices",                   "", "MYHLT"),
-	hltIterL3FromL1MuonTrimmedPixelVertices           = cms.untracked.InputTag("hltIterL3FromL1MuonTrimmedPixelVertices",             "", "MYHLT"),
+	                     # -- newly created objects by HLT rerun
+	                     # -- new process name = "MYHLT"
+	                     myTriggerResults = cms.untracked.InputTag("TriggerResults",       "", "MYHLT"),
+	                     myTriggerEvent   = cms.untracked.InputTag("hltTriggerSummaryAOD", "", "MYHLT"),
+	                     lumiScaler       = cms.untracked.InputTag("hltScalersRawToDigi",  "", "MYHLT"),
 
-	doMVA  = cms.bool(True),
-	doSeed = cms.bool(True),
+                             # -- generator information
+                             PUSummaryInfo = cms.untracked.InputTag("addPileupInfo"),
+                             genEventInfo = cms.untracked.InputTag("generator"),
+                             genParticle = cms.untracked.InputTag("genParticles"),
 
-        useSimpleGeometry = cms.bool( True ),
-        useStation2 = cms.bool( True ),
-        fallbackToME1 = cms.bool( False ),
-        cosmicPropagationHypothesis = cms.bool( False ),
-        useMB2InOverlap = cms.bool( False ),
-        useTrack = cms.string( "tracker" ),
-        useState = cms.string( "atVertex" ),
-        propagatorAlong = cms.ESInputTag( "","hltESPSteppingHelixPropagatorAlong" ),
-        propagatorAny = cms.ESInputTag( "","SteppingHelixPropagatorAny" ),
-        propagatorOpposite = cms.ESInputTag( "","hltESPSteppingHelixPropagatorOpposite" ),
+	                     rho_ECAL = cms.untracked.InputTag("hltFixedGridRhoFastjetECALMFForMuons", "", "MYHLT"),
+	                     rho_HCAL = cms.untracked.InputTag("hltFixedGridRhoFastjetHCAL",           "", "MYHLT"),
 
-	# -- generator information
-	PUSummaryInfo = cms.untracked.InputTag("addPileupInfo"),
-	genEventInfo = cms.untracked.InputTag("generator"),
-	genParticle = cms.untracked.InputTag("genParticles"),
+                             pfClusterProducerHCAL = cms.untracked.InputTag( "hltParticleFlowClusterHCAL", "", "MYHLT"),
+                             rhoProducer_HCAL = cms.untracked.InputTag( "hltFixedGridRhoFastjetHCAL", "", "MYHLT"),
+                             pfClusterProducerHFEM = cms.untracked.InputTag( "", "", "MYHLT" ),
+                             pfClusterProducerHFHAD = cms.untracked.InputTag( "", "", "MYHLT" ),
+
+                             pfClusterProducer = cms.untracked.InputTag( "hltParticleFlowClusterECALForMuonsMF", "", "MYHLT"),
+                             inputTrackCollection = cms.untracked.InputTag( "hltIter0L3MuonTrackSelectionHighPurity", "", "MYHLT"),
+                             inputMuonCollection = cms.InputTag( "hltL3fL1sSingleMu22L1f0L2f10QL3Filtered24Q", "", "MYHLT"),
+
+                             useSimpleGeometry = cms.bool( True ),
+                             useStation2 = cms.bool( True ),
+                             fallbackToME1 = cms.bool( False ),
+                             cosmicPropagationHypothesis = cms.bool( False ),
+                             useMB2InOverlap = cms.bool( False ),
+                             useTrack = cms.string( "tracker" ),
+                             useState = cms.string( "atVertex" ),
+                             propagatorAlong = cms.ESInputTag( "","hltESPSteppingHelixPropagatorAlong" ),
+                             propagatorAny = cms.ESInputTag( "","SteppingHelixPropagatorAny" ),
+                             propagatorOpposite = cms.ESInputTag( "","hltESPSteppingHelixPropagatorOpposite" ),
+
 )
