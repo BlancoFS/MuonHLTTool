@@ -43,6 +43,7 @@
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 #include "HLTrigger/HLTcore/interface/HLTConfigProvider.h"
 #include "HLTrigger/HLTcore/interface/HLTEventAnalyzerAOD.h"
+#include "DataFormats/HLTReco/interface/TriggerFilterObjectWithRefs.h" // New
 #include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h"
 
 #include "SimDataFormats/GeneratorProducts/interface/GenEventInfoProduct.h"
@@ -55,10 +56,27 @@
 #include "DataFormats/TrajectoryState/interface/PTrajectoryStateOnDet.h"
 #include "DataFormats/TrajectoryState/interface/LocalTrajectoryParameters.h"
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingParticle.h"
+#include "SimDataFormats/Associations/interface/TrackToTrackingParticleAssociator.h"
+#include "SimDataFormats/Associations/interface/MtdSimLayerClusterToTPAssociatorBaseImpl.h"
+#include "SimDataFormats/Associations/interface/MtdRecoClusterToSimLayerClusterAssociationMap.h"
 #include "CommonTools/Utils/interface/associationMapFilterValues.h"
 
 #include "Geometry/Records/interface/TrackerDigiGeometryRecord.h"
 #include "Geometry/TrackerGeometryBuilder/interface/TrackerGeometry.h"
+
+#include "RecoMuon/MuonIsolation/interface/Range.h"
+#include "CommonTools/Statistics/interface/ChiSquaredProbability.h"
+
+#include "RecoMuon/TrackerSeedGenerator/interface/SeedMvaEstimator.h"
+#include "MuonAnalysis/MuonAssociators/interface/PropagateToMuonSetup.h"
+
+#include "PhysicsTools/IsolationAlgos/interface/IsoDepositExtractor.h"
+#include "PhysicsTools/IsolationAlgos/interface/IsoDepositExtractorFactory.h"
+#include "DataFormats/RecoCandidate/interface/RecoEcalCandidate.h"
+#include "DataFormats/RecoCandidate/interface/RecoEcalCandidateIsolation.h"
+
+#include "DataFormats/ParticleFlowReco/interface/PFCluster.h"
+#include "DataFormats/ParticleFlowReco/interface/PFClusterFwd.h"
 
 #include <map>
 #include <string>
@@ -68,7 +86,7 @@
 using namespace std;
 using namespace reco;
 using namespace edm;
-
+using namespace muonisolation;
 
 MuonHLTNtupler::MuonHLTNtupler(const edm::ParameterSet& iConfig):
 doMVA(iConfig.getParameter<bool>("doMVA")),
@@ -86,6 +104,9 @@ l1PrimaryVertexToken_( consumes<l1t::VertexWordCollection>      (iConfig.getPara
 associatorToken(consumes<reco::TrackToTrackingParticleAssociator>(iConfig.getUntrackedParameter<edm::InputTag>("associator"))),
 trackingParticleToken(consumes<TrackingParticleCollection>(iConfig.getUntrackedParameter<edm::InputTag>("trackingParticle"))),
 // t_offlineMuon_       ( consumes< std::vector<reco::Muon> >                (iConfig.getUntrackedParameter<edm::InputTag>("offlineMuon"       )) ),
+//propSetup_(iConfig, consumesCollector()),
+//t_beamSpot_          ( consumes< reco::BeamSpot >                         (iConfig.getUntrackedParameter<edm::InputTag>("beamSpot"     )) ),
+
 t_offlineMuon_       ( consumes< edm::View<reco::Muon> >                  (iConfig.getUntrackedParameter<edm::InputTag>("offlineMuon"       )) ),
 t_offlineVertex_     ( consumes< reco::VertexCollection >                 (iConfig.getUntrackedParameter<edm::InputTag>("offlineVertex"     )) ),
 t_triggerResults_    ( consumes< edm::TriggerResults >                    (iConfig.getUntrackedParameter<edm::InputTag>("triggerResults"    )) ),
@@ -123,6 +144,116 @@ t_hltIter0IterL3FromL1MuonTrack_    ( consumes< edm::View<reco::Track> >        
 t_hltIter2IterL3FromL1MuonTrack_    ( consumes< edm::View<reco::Track> >         (iConfig.getUntrackedParameter<edm::InputTag>("hltIter2IterL3FromL1MuonTrack"    )) ),
 t_hltIter3IterL3FromL1MuonTrack_    ( consumes< edm::View<reco::Track> >         (iConfig.getUntrackedParameter<edm::InputTag>("hltIter3IterL3FromL1MuonTrack"    )) ),
 
+// Muon timing
+
+theMuonCollectionToken_ ( consumes<reco::RecoChargedCandidateCollection>                            (iConfig.getParameter<edm::InputTag>("inputMuonCollection"))            ),
+theMuonFilteredCollectionToken_ ( consumes<trigger::TriggerFilterObjectWithRefs>             (iConfig.getParameter<edm::InputTag>("inputMuonFilterCollection"))            ),
+//muonAssocToken_    ( consumes<edm::ValueMap<int>>                            (iConfig.getParameter<edm::InputTag>("muontrkAssSrc"))            ),
+
+muonbtlMatchChi2Token_                  ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonbtlMatchChi2"))                    ),
+muonetlMatchChi2Token_                  ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonetlMatchChi2"))                    ),
+muonbtlMatchTimeChi2Token_              ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonbtlMatchTimeChi2"))                    ),
+muonetlMatchTimeChi2Token_              ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonetlMatchTimeChi2"))                    ),
+muonnpixBarrelToken_                    ( consumes<edm::ValueMap<int>>                          (iConfig.getParameter<edm::InputTag>("muonnpixBarrel"))                    ),
+muonnpixEndcapToken_                    ( consumes<edm::ValueMap<int>>                          (iConfig.getParameter<edm::InputTag>("muonnpixEndcap"))                    ),
+muonTrackOutermostHitPositionToken_ ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonTrackOutermostHitPosition"))                    ),
+muonTrackpToken_                    ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonTrackp"))                    ),
+muonTrackBetaToken_                 ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonTrackBeta"))                    ),
+muonTrackt0Token_                   ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonTrackt0"))                    ),
+muonTracksigmat0Token_              ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonTracksigmat0"))                    ),
+muonTrackPathLengthToken_           ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonTrackPathLength"))                    ),
+muonTracktmtdToken_                 ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonTracktmtd"))                    ),
+muonTracksigmatmtdToken_            ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonTracksigmatmtd"))                    ),
+muonTrackmtdposToken_               ( consumes<edm::ValueMap<GlobalPoint>>                    (iConfig.getParameter<edm::InputTag>("muonTrackmtdpos"))                    ),
+muonTrackTofMuToken_                ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonTrackTofMu"))                    ),
+muonTrackSigmaTofMuToken_           ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("muonTrackSigmaTofMu"))                    ),
+
+// Isolation - ECAL
+
+pfClusterProducer_ecal_      ( consumes<reco::PFClusterCollection>             (iConfig.getUntrackedParameter<edm::InputTag>("pfClusterProducer_ecal"))      ),
+t_rho_ECAL_                  ( consumes< double >                              (iConfig.getUntrackedParameter<edm::InputTag>("rho_ECAL"          )) ),
+
+drMax_ECAL_                  (iConfig.getParameter<double>("drMax_ECAL")),
+drVetoBarrel_ECAL_           (iConfig.getParameter<double>("drVetoBarrel_ECAL")),
+drVetoEndcap_ECAL_           (iConfig.getParameter<double>("drVetoEndcap_ECAL")),
+etaStripBarrel_ECAL_         (iConfig.getParameter<double>("etaStripBarrel_ECAL")),
+etaStripEndcap_ECAL_         (iConfig.getParameter<double>("etaStripEndcap_ECAL")),
+energyBarrel_ECAL_           (iConfig.getParameter<double>("energyBarrel_ECAL")),
+energyEndcap_ECAL_           (iConfig.getParameter<double>("energyEndcap_ECAL")),
+
+// Isolation - HCAL
+
+pfClusterProducerHCAL_  ( consumes<reco::PFClusterCollection>             (iConfig.getUntrackedParameter<edm::InputTag>("pfClusterProducerHCAL"))  ),
+t_rho_HCAL_             ( consumes< double >                                 (iConfig.getUntrackedParameter<edm::InputTag>("rho_HCAL"          )) ),
+
+drMax_HCAL_           (iConfig.getParameter<double>("drMax_HCAL")),
+drVetoBarrel_HCAL_    (iConfig.getParameter<double>("drVetoBarrel_HCAL")),
+drVetoEndcap_HCAL_    (iConfig.getParameter<double>("drVetoEndcap_HCAL")),
+etaStripBarrel_HCAL_  (iConfig.getParameter<double>("etaStripBarrel_HCAL")),
+etaStripEndcap_HCAL_  (iConfig.getParameter<double>("etaStripEndcap_HCAL")),
+energyBarrel_HCAL_    (iConfig.getParameter<double>("energyBarrel_HCAL")),
+energyEndcap_HCAL_    (iConfig.getParameter<double>("energyEndcap_HCAL")),
+
+// Isolation - HGCAL
+
+layerClusterProducer_HGCAL_( consumes<reco::CaloClusterCollection>            (iConfig.getUntrackedParameter<edm::InputTag>("layerClusterProducer_HGCAL"))  ),
+hgcalLayerClustersTime_(     consumes<edm::ValueMap<std::pair<float, float>>> (iConfig.getUntrackedParameter<edm::InputTag>("hgcalLayerClustersTime"))),
+
+drVetoHad_HGCAL_ (iConfig.getParameter<double>("drVetoHad_HGCAL")),
+drVetoEM_HGCAL_  (iConfig.getParameter<double>("drVetoEM_HGCAL")),
+drMax_HGCAL_     (iConfig.getParameter<double>("drMax_HGCAL")),
+
+// Isolation - TRK
+
+theDiff_r        (iConfig.getParameter<double>("Diff_r")),
+theDiff_z        (iConfig.getParameter<double>("Diff_z")),
+theDR_Max        (iConfig.getParameter<double>("DR_Max")),
+theDR_Veto       (iConfig.getParameter<double>("DR_Veto")),
+theNHits_Min     (iConfig.getParameter<unsigned int>("NHits_Min")),
+theChi2Ndof_Max  (iConfig.getParameter<double>("Chi2Ndof_Max")),
+theChi2Prob_Min  (iConfig.getParameter<double>("Chi2Prob_Min")),
+thePt_Min        (iConfig.getParameter<double>("Pt_Min")),
+
+theTrackCollectionToken_ ( consumes<TrackCollection>                       (iConfig.getUntrackedParameter<edm::InputTag>("inputTrackCollection"))   ),
+
+// MTD
+
+//RecMTDTrackToken_                ( consumes<TrackCollection>                               (iConfig.getUntrackedParameter<edm::InputTag>("inputMTDExtendedTrackCollection"))   ),
+//tp2SimAssociationMapToken_       ( consumes<reco::TPToSimCollectionMtd>                    (iConfig.getParameter<edm::InputTag>("tp2SimAssociationMapTag"))  ),
+//r2sAssociationMapToken_          ( consumes<MtdRecoClusterToSimLayerClusterAssociationMap> (iConfig.getParameter<edm::InputTag>("r2sAssociationMapTag"))     ),
+//trackAssocToken_                 ( consumes<edm::ValueMap<int>>                            (iConfig.getParameter<edm::InputTag>("trackAssocSrc"))            ),
+//trackingParticleCollectionToken_ ( consumes<TrackingParticleCollection>                    (iConfig.getParameter<edm::InputTag>("SimTag"))                   ),
+//recoToSimAssociationToken_       ( consumes<reco::RecoToSimCollection>                     (iConfig.getParameter<edm::InputTag>("TPtoRecoTrackAssoc"))       ),
+//simToRecoAssociationToken_       ( consumes<reco::SimToRecoCollection>                     (iConfig.getParameter<edm::InputTag>("TPtoRecoTrackAssoc"))       ),
+t0SrcToken_                      ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("t0Src"))                    ),
+Sigmat0SrcToken_                 ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("sigmat0Src"))               ),
+t0PidToken_                      ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("t0PID"))                    ),
+t0SafePidToken_                  ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("t0SafePID"))                ),
+sigmat0SafePidToken_             ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("sigmat0SafePID"))           ),
+trackMVAQualToken_               ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("trackMVAQual"))             ),
+tmtdToken_                       ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("tmtdSrc"))                     ),
+tofPiToken_                      ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("tofPiSrc"))                    ),
+tofKToken_                       ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("tofKSrc"))                     ),
+tofPToken_                       ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("tofPSrc"))                     ),
+probPiToken_                     ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("probPi"))                   ),
+probKToken_  	      	      	 ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("probK"))                    ),
+probPToken_  	      	      	 ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("probP"))                    ),
+sigmatofpiToken_  	         ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("sigmatofpiSrc"))            ),
+sigmatofkToken_  	      	 ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("sigmatofkSrc"))             ),
+sigmatofpToken_                  ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("sigmatofpSrc"))             ),
+btlMatchChi2Token_               ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("btlMatchChi2Src"))          ),
+btlMatchTimeChi2Token_           ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("btlMatchTimeChi2Src"))      ),
+etlMatchChi2Token_               ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("etlMatchChi2Src"))          ),
+etlMatchTimeChi2Token_           ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("etlMatchTimeChi2Src"))      ),
+npixBarrelToken_                 ( consumes<edm::ValueMap<int>>                            (iConfig.getParameter<edm::InputTag>("npixBarrelSrc"))            ),
+npixEndcapToken_                 ( consumes<edm::ValueMap<int>>                            (iConfig.getParameter<edm::InputTag>("npixEndcapSrc"))            ),
+trackOutermostHitPositionToken_  ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("trackOutermostHitPositionSrc"))            ),
+trackpSrcToken_                  ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("trackpSrc"))            ),
+trackBetaSrcToken_               ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("trackBetaSrc"))            ),
+trackPathLengthToken_            ( consumes<edm::ValueMap<float>>                          (iConfig.getParameter<edm::InputTag>("trackPathLengthSrc"))            ),
+trackmtdposToken_                ( consumes<edm::ValueMap<GlobalPoint>>                    (iConfig.getParameter<edm::InputTag>("trackmtdposSrc"))            ),
+
+// End of isolation inputs
 
 t_lumiScaler_        ( consumes< LumiScalersCollection >                  (iConfig.getUntrackedParameter<edm::InputTag>("lumiScaler"        )) ),
 t_offlineLumiScaler_ ( consumes< LumiScalersCollection >                  (iConfig.getUntrackedParameter<edm::InputTag>("offlineLumiScaler" )) ),
@@ -171,92 +302,12 @@ propagatorESToken_(esConsumes<Propagator, TrackingComponentsRecord>(edm::ESInput
   for( unsigned int i = 0; i < pfIsoTags_.size(); ++i) {
     pfIsoTokens_.push_back( consumes<reco::RecoChargedCandidateIsolationMap>( pfIsoLabels_.at(i) ) );
   }
-
-  // mvaFileHltIterL3OISeedsFromL2Muons_B_0_                       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIterL3OISeedsFromL2Muons_B_0");
-  // mvaFileHltIterL3OISeedsFromL2Muons_B_1_                       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIterL3OISeedsFromL2Muons_B_1");
-  // mvaFileHltIterL3OISeedsFromL2Muons_B_2_                       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIterL3OISeedsFromL2Muons_B_2");
-  // mvaFileHltIterL3OISeedsFromL2Muons_B_3_                       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIterL3OISeedsFromL2Muons_B_3");
-  // mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_0_       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_0");
-  // mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_1_       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_1");
-  // mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_2_       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_2");
-  // mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_3_       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_3");
-  // mvaFileHltIter2IterL3MuonPixelSeeds_B_0_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3MuonPixelSeeds_B_0");
-  // mvaFileHltIter2IterL3MuonPixelSeeds_B_1_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3MuonPixelSeeds_B_1");
-  // mvaFileHltIter2IterL3MuonPixelSeeds_B_2_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3MuonPixelSeeds_B_2");
-  // mvaFileHltIter2IterL3MuonPixelSeeds_B_3_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3MuonPixelSeeds_B_3");
-  // mvaFileHltIter3IterL3MuonPixelSeeds_B_0_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3MuonPixelSeeds_B_0");
-  // mvaFileHltIter3IterL3MuonPixelSeeds_B_1_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3MuonPixelSeeds_B_1");
-  // mvaFileHltIter3IterL3MuonPixelSeeds_B_2_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3MuonPixelSeeds_B_2");
-  // mvaFileHltIter3IterL3MuonPixelSeeds_B_3_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3MuonPixelSeeds_B_3");
-  // mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_0_ = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_0");
-  // mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_1_ = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_1");
-  // mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_2_ = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_2");
-  // mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_3_ = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_3");
   mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_0_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_0");
-  // mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_1_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_1");
-  // mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_2_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_2");
-  // mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_3_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_3");
-  // mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_0_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_0");
-  // mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_1_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_1");
-  // mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_2_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_2");
-  // mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_3_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_3");
-  // mvaFileHltIterL3OISeedsFromL2Muons_E_0_                       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIterL3OISeedsFromL2Muons_E_0");
-  // mvaFileHltIterL3OISeedsFromL2Muons_E_1_                       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIterL3OISeedsFromL2Muons_E_1");
-  // mvaFileHltIterL3OISeedsFromL2Muons_E_2_                       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIterL3OISeedsFromL2Muons_E_2");
-  // mvaFileHltIterL3OISeedsFromL2Muons_E_3_                       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIterL3OISeedsFromL2Muons_E_3");
-  // mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_0_       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_0");
-  // mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_1_       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_1");
-  // mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_2_       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_2");
-  // mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_3_       = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_3");
-  // mvaFileHltIter2IterL3MuonPixelSeeds_E_0_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3MuonPixelSeeds_E_0");
-  // mvaFileHltIter2IterL3MuonPixelSeeds_E_1_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3MuonPixelSeeds_E_1");
-  // mvaFileHltIter2IterL3MuonPixelSeeds_E_2_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3MuonPixelSeeds_E_2");
-  // mvaFileHltIter2IterL3MuonPixelSeeds_E_3_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3MuonPixelSeeds_E_3");
-  // mvaFileHltIter3IterL3MuonPixelSeeds_E_0_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3MuonPixelSeeds_E_0");
-  // mvaFileHltIter3IterL3MuonPixelSeeds_E_1_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3MuonPixelSeeds_E_1");
-  // mvaFileHltIter3IterL3MuonPixelSeeds_E_2_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3MuonPixelSeeds_E_2");
-  // mvaFileHltIter3IterL3MuonPixelSeeds_E_3_                      = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3MuonPixelSeeds_E_3");
-  // mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_0_ = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_0");
-  // mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_1_ = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_1");
-  // mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_2_ = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_2");
-  // mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_3_ = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_3");
   mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_0_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_0");
-  // mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_1_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_1");
-  // mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_2_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_2");
-  // mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_3_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_3");
-  // mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_0_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_0");
-  // mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_1_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_1");
-  // mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_2_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_2");
-  // mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_3_                = iConfig.getUntrackedParameter<edm::FileInPath>("mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_3");
-
-  // mvaScaleMeanHltIterL3OISeedsFromL2Muons_B_ =                       iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIterL3OISeedsFromL2Muons_B");
-  // mvaScaleMeanHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_ =       iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIter0IterL3MuonPixelSeedsFromPixelTracks_B");
-  // mvaScaleMeanHltIter2IterL3MuonPixelSeeds_B_ =                      iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIter2IterL3MuonPixelSeeds_B");
-  // mvaScaleMeanHltIter3IterL3MuonPixelSeeds_B_ =                      iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIter3IterL3MuonPixelSeeds_B");
-  // mvaScaleMeanHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_ = iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B");
   mvaScaleMeanHltIter2IterL3FromL1MuonPixelSeeds_B_ =                iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIter2IterL3FromL1MuonPixelSeeds_B");
-  // mvaScaleMeanHltIter3IterL3FromL1MuonPixelSeeds_B_ =                iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIter3IterL3FromL1MuonPixelSeeds_B");
-  // mvaScaleStdHltIterL3OISeedsFromL2Muons_B_ =                        iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIterL3OISeedsFromL2Muons_B");
-  // mvaScaleStdHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_ =        iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIter0IterL3MuonPixelSeedsFromPixelTracks_B");
-  // mvaScaleStdHltIter2IterL3MuonPixelSeeds_B_ =                       iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIter2IterL3MuonPixelSeeds_B");
-  // mvaScaleStdHltIter3IterL3MuonPixelSeeds_B_ =                       iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIter3IterL3MuonPixelSeeds_B");
-  // mvaScaleStdHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_ =  iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B");
   mvaScaleStdHltIter2IterL3FromL1MuonPixelSeeds_B_ =                 iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIter2IterL3FromL1MuonPixelSeeds_B");
-  // mvaScaleStdHltIter3IterL3FromL1MuonPixelSeeds_B_ =                 iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIter3IterL3FromL1MuonPixelSeeds_B");
-  // mvaScaleMeanHltIterL3OISeedsFromL2Muons_E_ =                       iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIterL3OISeedsFromL2Muons_E");
-  // mvaScaleMeanHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_ =       iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIter0IterL3MuonPixelSeedsFromPixelTracks_E");
-  // mvaScaleMeanHltIter2IterL3MuonPixelSeeds_E_ =                      iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIter2IterL3MuonPixelSeeds_E");
-  // mvaScaleMeanHltIter3IterL3MuonPixelSeeds_E_ =                      iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIter3IterL3MuonPixelSeeds_E");
-  // mvaScaleMeanHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_ = iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E");
   mvaScaleMeanHltIter2IterL3FromL1MuonPixelSeeds_E_ =                iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIter2IterL3FromL1MuonPixelSeeds_E");
-  // mvaScaleMeanHltIter3IterL3FromL1MuonPixelSeeds_E_ =                iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleMeanHltIter3IterL3FromL1MuonPixelSeeds_E");
-  // mvaScaleStdHltIterL3OISeedsFromL2Muons_E_ =                        iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIterL3OISeedsFromL2Muons_E");
-  // mvaScaleStdHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_ =        iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIter0IterL3MuonPixelSeedsFromPixelTracks_E");
-  // mvaScaleStdHltIter2IterL3MuonPixelSeeds_E_ =                       iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIter2IterL3MuonPixelSeeds_E");
-  // mvaScaleStdHltIter3IterL3MuonPixelSeeds_E_ =                       iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIter3IterL3MuonPixelSeeds_E");
-  // mvaScaleStdHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_ =  iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E");
   mvaScaleStdHltIter2IterL3FromL1MuonPixelSeeds_E_ =                 iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIter2IterL3FromL1MuonPixelSeeds_E");
-  // mvaScaleStdHltIter3IterL3FromL1MuonPixelSeeds_E_ =                 iConfig.getUntrackedParameter<std::vector<double>>("mvaScaleStdHltIter3IterL3FromL1MuonPixelSeeds_E");
 }
 
 void MuonHLTNtupler::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetup)
@@ -350,6 +401,7 @@ void MuonHLTNtupler::analyze(const edm::Event &iEvent, const edm::EventSetup &iS
   // -- fill each object
   Fill_L1Track(iEvent, iSetup);
   Fill_Muon(iEvent);
+  Fill_Muon2(iEvent);
   Fill_HLT(iEvent, 0); // -- original HLT objects saved in data taking
   Fill_HLT(iEvent, 1); // -- rerun objects
   Fill_HLTMuon(iEvent);
@@ -360,6 +412,10 @@ void MuonHLTNtupler::analyze(const edm::Event &iEvent, const edm::EventSetup &iS
     Fill_GenParticle(iEvent);
     // Fill_TP(iEvent, TrkParticle);
   }
+  Fill_ECAL(iEvent, iSetup);
+  Fill_HCAL(iEvent, iSetup);
+  Fill_HGCAL(iEvent, iSetup);
+  Fill_Track(iEvent, iSetup);
 
   for( unsigned int i = 0; i < trackCollectionNames_.size(); ++i) {
     bool doIso = (i == trackCollectionNames_.size()-1);
@@ -762,6 +818,258 @@ void MuonHLTNtupler::Init()
     iterL3Muon_isTRK_[i] = 0;
   }
 
+  nMuonCand_ = 0;
+  for( int i=0; i<arrSize_; i++)
+    {
+      muonCand_pt_[i] = -999;
+      muonCand_eta_[i] = -999;
+      muonCand_phi_[i] = -999;
+      muonCand_px_[i] = -999;
+      muonCand_py_[i] = -999;
+      muonCand_pz_[i] = -999;
+      muonCand_vx_[i] = -999;
+      muonCand_vy_[i] = -999;
+      muonCand_vz_[i] = -999;
+      muonCand_dB_[i] = -999;
+      muonCand_charge_[i] = -999;
+      muonCand_isGLB_[i] = 0;
+      muonCand_isSTA_[i] = 0;
+      muonCand_isTRK_[i] = 0;
+      muonCand_isMuon_[i] = 0;
+      muonCand_inner_trkChi2_[i] = -999;
+      muonCand_inner_validFraction_[i] = -999;
+      muonCand_inner_trackerLayers_[i] = -999;
+      muonCand_inner_trackerHits_[i] = -999;
+      muonCand_inner_lostTrackerHits_[i] = -999;
+      muonCand_inner_lostTrackerHitsIn_[i] = -999;
+      muonCand_inner_lostTrackerHitsOut_[i] = -999;
+      muonCand_inner_lostPixelHits_[i] = -999;
+      muonCand_inner_lostPixelBarrelHits_[i] = -999;
+      muonCand_inner_lostPixelEndcapHits_[i] = -999;
+      muonCand_inner_lostStripHits_[i] = -999;
+      muonCand_inner_lostStripTIBHits_[i] = -999;
+      muonCand_inner_lostStripTIDHits_[i] = -999;
+      muonCand_inner_lostStripTOBHits_[i] = -999;
+      muonCand_inner_lostStripTECHits_[i] = -999;
+      muonCand_inner_pixelLayers_[i] = -999;
+      muonCand_inner_pixelHits_[i] = -999;
+      muonCand_global_muonHits_[i] = -999;
+      muonCand_global_trkChi2_[i] = -999;
+      muonCand_global_trackerLayers_[i] = -999;
+      muonCand_global_trackerHits_[i] = -999;
+      
+      muonCand_dxy_bs_[i] = -999;
+      muonCand_dxyError_bs_[i] = -999;
+      muonCand_dz_bs_[i] = -999;
+      muonCand_dzError_[i] = -999;
+      muonCand_IPSig_[i] = -999;
+
+      muonCand_btlMatchChi2_[i] = -999;
+      muonCand_etlMatchChi2_[i] = -999;
+      muonCand_btlMatchTimeChi2_[i] = -999;
+      muonCand_etlMatchTimeChi2_[i] = -999;
+      muonCand_npixBarrel_[i] = -999;
+      muonCand_npixEndcap_[i] = -999;
+      muonCand_outermostHitPosition_[i] = -999;
+      muonCand_p_[i] = -999;
+      muonCand_beta_[i] = -999;
+      muonCand_t0_[i] = -999;
+      muonCand_sigmat0_[i] = -999;
+      muonCand_pathLength_[i] = -999;
+      muonCand_tmtd_[i] = -999;
+      muonCand_sigmatmtd_[i] = -999;
+      muonCand_tofMu_[i] = -999;
+      muonCand_sigmaTofMu_[i] = -999;
+      muonCand_mtdpos_x_[i] = -999;
+      muonCand_mtdpos_y_[i] = -999;
+      muonCand_mtdpos_z_[i] = -999;
+    }
+
+  nECAL_ = 0;
+  for( int i=0; i<arrSize_; i++)
+  {
+    ecal_et_[i] = -999;
+    ecal_pt_[i] = -999;
+    ecal_eta_[i] = -999;
+    ecal_phi_[i] = -999;
+    ecal_charge_[i] = -999;
+    ecal_px_[i] = -999;
+    ecal_py_[i] = -999;
+    ecal_pz_[i] = -999;
+    ecal_vx_[i] = -999;
+    ecal_vy_[i] = -999;
+    ecal_vz_[i] = -999;
+    ecal_time_[i] = -999;
+    ecal_timeErr_[i] = -999;
+    ecal_depth_[i] = -999;
+    ecal_rho_[i] = -999;
+    ecal_muonIdx_[i] = -999;
+    ecal_nHits_[i] = -999;
+  }
+
+  nECALHits_ = 0;
+  for( int i=0; i<arrSize_; i++)
+  {
+    ecal_hit_energy_[i] = -999;
+    ecal_hit_depth_[i] = -999;
+    ecal_hit_time_[i] = -999;
+    ecal_hit_timeErr_[i] = -999;
+    ecal_hit_pt2_[i] = -999;
+    ecal_hit_x_[i] = -999;
+    ecal_hit_y_[i] = -999;
+    ecal_hit_z_[i] = -999;
+    ecal_hit_eta_[i] = -999;
+    ecal_hit_phi_[i] = -999;
+    ecal_hit_fraction_[i] = -999;
+    ecal_hit_idx_[i] = -999;
+  }
+
+  nHCAL_ = 0;
+  for( int i=0; i<arrSize_; i++)
+  {
+    hcal_et_[i] = -999;
+    hcal_pt_[i] = -999;
+    hcal_eta_[i] = -999;
+    hcal_phi_[i] = -999;
+    hcal_charge_[i] = -999;
+    hcal_px_[i] = -999;
+    hcal_py_[i] = -999;
+    hcal_pz_[i] = -999;
+    hcal_vx_[i] = -999;
+    hcal_vy_[i] = -999;
+    hcal_vz_[i] = -999;
+    hcal_time_[i] = -999;
+    hcal_timeErr_[i] = -999;
+    hcal_depth_[i] = -999;
+    hcal_rho_[i] = -999;
+    hcal_muonIdx_[i] = -999;
+    hcal_nHits_[i] = -999;
+  }
+
+  nHCALHits_ = 0;
+  for( int i=0; i<arrSize_; i++)
+  {
+    hcal_hit_energy_[i] = -999;
+    hcal_hit_depth_[i] = -999;
+    hcal_hit_time_[i] = -999;
+    hcal_hit_timeErr_[i] = -999;
+    hcal_hit_pt2_[i] = -999;
+    hcal_hit_x_[i] = -999;
+    hcal_hit_y_[i] = -999;
+    hcal_hit_z_[i] = -999;
+    hcal_hit_eta_[i] = -999;
+    hcal_hit_phi_[i] = -999;
+    hcal_hit_fraction_[i] = -999;
+    hcal_hit_idx_[i] = -999;
+  }
+  
+  nHGCAL_em_ = 0;
+  for( int i=0; i<arrSize_; i++)
+  {
+    hgcal_em_et_[i] = -999;
+    hgcal_em_pt_[i] = -999;
+    hgcal_em_eta_[i] = -999;
+    hgcal_em_phi_[i] = -999;
+    hgcal_em_charge_[i] = -999;
+    hgcal_em_px_[i] = -999;
+    hgcal_em_py_[i] = -999;
+    hgcal_em_pz_[i] = -999;
+    hgcal_em_vx_[i] = -999;
+    hgcal_em_vy_[i] = -999;
+    hgcal_em_vz_[i] = -999;
+    hgcal_em_time_[i] = -999;
+    hgcal_em_timeErr_[i] = -999;
+    hgcal_em_depth_[i] = -999;
+    hgcal_em_algoID_[i] = -999;
+    hgcal_em_muonIdx_[i] = -999;
+  }
+  nHGCAL_had_ = 0;
+  for( int i=0; i<arrSize_; i++)
+  {
+    hgcal_had_et_[i] = -999;
+    hgcal_had_pt_[i] = -999;
+    hgcal_had_eta_[i] = -999;
+    hgcal_had_phi_[i] = -999;
+    hgcal_had_charge_[i] = -999;
+    hgcal_had_px_[i] = -999;
+    hgcal_had_py_[i] = -999;
+    hgcal_had_pz_[i] = -999;
+    hgcal_had_vx_[i] = -999;
+    hgcal_had_vy_[i] = -999;
+    hgcal_had_vz_[i] = -999;
+    hgcal_had_time_[i] = -999;
+    hgcal_had_timeErr_[i] = -999;
+    hgcal_had_depth_[i] = -999;
+    hgcal_had_algoID_[i] = -999;
+    hgcal_had_muonIdx_[i] = -999;
+  }
+
+  nTrack_ = 0;
+  for( int i=0; i<arrSize_; i++)
+  {
+    track_pt_[i] = -999;
+    track_eta_[i] = -999;
+    track_phi_[i] = -999;
+    track_charge_[i] = -999;
+    track_px_[i] = -999;
+    track_py_[i] = -999;
+    track_pz_[i] = -999;
+    track_vx_[i] = -999;
+    track_vy_[i] = -999;
+    track_vz_[i] = -999;
+    track_dxy_bs_[i] = -999;
+    track_dxyError_bs_[i] = -999;
+    track_dz_bs_[i] = -999;
+    track_dzError_[i] = -999;
+    track_trkChi2_[i] = -999;
+    track_trackerLayers_[i] = -999;
+    track_trackerHits_[i] = -999;
+    track_lostTrackerHits_[i] = -999;
+    track_lostTrackerHitsIn_[i] = -999;
+    track_lostTrackerHitsOut_[i] = -999;
+    track_lostPixelHits_[i] = -999;
+    track_lostPixelBarrelHits_[i] = -999;
+    track_lostPixelEndcapHits_[i] = -999;
+    track_lostStripHits_[i] = -999;
+    track_lostStripTIBHits_[i] = -999;
+    track_lostStripTIDHits_[i] = -999;
+    track_lostStripTOBHits_[i] = -999;
+    track_lostStripTECHits_[i] = -999;
+    track_pixelLayers_[i] = -999;
+    track_pixelHits_[i] = -999;
+    track_muonHits_[i] = -999;
+    track_t0Src_[i] = -999;
+    track_Sigmat0Src_[i] = -999;
+    track_t0Pid_[i] = -999;
+    track_t0Safe_[i] = -999;
+    track_sigmat0Safe_[i] = -999;
+    track_mtdQualMVA_[i] = -999;
+    track_tMtd_[i] = -999;
+    track_tofPi_[i] = -999;
+    track_tofK_[i] = -999;
+    track_tofP_[i] = -999;
+    track_probPi_[i] = -999;
+    track_probK_[i] = -999;
+    track_probP_[i] = -999;
+    track_sigmatofpi_[i] = -999;
+    track_sigmatofk_[i] = -999;
+    track_sigmatofp_[i] = -999;
+    track_btlMatchChi2_[i] = -999;
+    track_btlMatchTimeChi2_[i] = -999;
+    track_etlMatchChi2_[i] = -999;
+    track_etlMatchTimeChi2_[i] = -999;
+    track_npixBarrel_[i] = -999;
+    track_npixEndcap_[i] = -999;
+    track_muonIdx_[i] = -999;
+    track_outermostHitPosition_[i] = -999;
+    track_p_[i] = -999;
+    track_beta_[i] = -999;
+    track_pathLength_[i] = -999;
+    track_mtdpos_x_[i] = -999;
+    track_mtdpos_y_[i] = -999;
+    track_mtdpos_z_[i] = -999;
+  }
+  
   SThltIterL3OISeedsFromL2Muons->clear();
   SThltIter0IterL3MuonPixelSeedsFromPixelTracks->clear();
   SThltIter2IterL3MuonPixelSeeds->clear();
@@ -1076,6 +1384,231 @@ void MuonHLTNtupler::Make_Branch()
   ntuple_->Branch("iterL3Muon_isSTA",  &iterL3Muon_isSTA_,  "iterL3Muon_isSTA[nIterL3Muon]/I");
   ntuple_->Branch("iterL3Muon_isTRK",  &iterL3Muon_isTRK_,  "iterL3Muon_isTRK[nIterL3Muon]/I");
 
+  ntuple_->Branch("nMuonCand", &nMuonCand_, "nMuonCand/I");
+
+  ntuple_->Branch("muonCand_pt", &muonCand_pt_, "muonCand_pt[nMuonCand]/D");
+  ntuple_->Branch("muonCand_eta", &muonCand_eta_, "muonCand_eta[nMuonCand]/D");
+  ntuple_->Branch("muonCand_phi", &muonCand_phi_, "muonCand_phi[nMuonCand]/D");
+  ntuple_->Branch("muonCand_px", &muonCand_px_, "muonCand_px[nMuonCand]/D");
+  ntuple_->Branch("muonCand_py", &muonCand_py_, "muonCand_py[nMuonCand]/D");
+  ntuple_->Branch("muonCand_pz", &muonCand_pz_, "muonCand_pz[nMuonCand]/D");
+  ntuple_->Branch("muonCand_vx", &muonCand_vx_, "muonCand_vx[nMuonCand]/D");
+  ntuple_->Branch("muonCand_vy", &muonCand_vy_, "muonCand_vy[nMuonCand]/D");
+  ntuple_->Branch("muonCand_vz", &muonCand_vz_, "muonCand_vz[nMuonCand]/D");
+  ntuple_->Branch("muonCand_dB", &muonCand_dB_, "muonCand_dB[nMuonCand]/D");
+  ntuple_->Branch("muonCand_charge", &muonCand_charge_, "muonCand_charge[nMuonCand]/D");
+  ntuple_->Branch("muonCand_isGLB", &muonCand_isGLB_, "muonCand_isGLB[nMuonCand]/I");
+  ntuple_->Branch("muonCand_isSTA", &muonCand_isSTA_, "muonCand_isSTA[nMuonCand]/I");
+  ntuple_->Branch("muonCand_isTRK", &muonCand_isTRK_, "muonCand_isTRK[nMuonCand]/I");
+  ntuple_->Branch("muonCand_isMuon", &muonCand_isMuon_, "muonCand_isMuon[nMuonCand]/I");
+
+  ntuple_->Branch("muonCand_inner_trkChi2", &muonCand_inner_trkChi2_, "muonCand_inner_trkChi2[nMuonCand]/D");
+  ntuple_->Branch("muonCand_inner_validFraction", &muonCand_inner_validFraction_, "muonCand_inner_validFraction[nMuonCand]/D");
+  ntuple_->Branch("muonCand_inner_trackerLayers", &muonCand_inner_trackerLayers_, "muonCand_inner_trackerLayers[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_trackerHits", &muonCand_inner_trackerHits_, "muonCand_inner_trackerHits[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_lostTrackerHits", &muonCand_inner_lostTrackerHits_, "muonCand_inner_lostTrackerHits[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_lostTrackerHitsIn", &muonCand_inner_lostTrackerHitsIn_, "muonCand_inner_lostTrackerHitsIn[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_lostTrackerHitsOut", &muonCand_inner_lostTrackerHitsOut_, "muonCand_inner_lostTrackerHitsOut[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_lostPixelHits", &muonCand_inner_lostPixelHits_, "muonCand_inner_lostPixelHits[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_lostPixelBarrelHits", &muonCand_inner_lostPixelBarrelHits_, "muonCand_inner_lostPixelBarrelHits[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_lostPixelEndcapHits", &muonCand_inner_lostPixelEndcapHits_, "muonCand_inner_lostPixelEndcapHits[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_lostStripHits", &muonCand_inner_lostStripHits_, "muonCand_inner_lostStripHits[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_lostStripTIBHits", &muonCand_inner_lostStripTIBHits_, "muonCand_inner_lostStripTIBHits[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_lostStripTIDHits", &muonCand_inner_lostStripTIDHits_, "muonCand_inner_lostStripTIDHits[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_lostStripTOBHits", &muonCand_inner_lostStripTOBHits_, "muonCand_inner_lostStripTOBHits[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_lostStripTECHits", &muonCand_inner_lostStripTECHits_, "muonCand_inner_lostStripTECHits[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_pixelLayers", &muonCand_inner_pixelLayers_, "muonCand_inner_pixelLayers[nMuonCand]/I");
+  ntuple_->Branch("muonCand_inner_pixelHits", &muonCand_inner_pixelHits_, "muonCand_inner_pixelHits[nMuonCand]/I");
+  ntuple_->Branch("muonCand_global_muonHits", &muonCand_global_muonHits_, "muonCand_global_muonHits[nMuonCand]/I");
+  ntuple_->Branch("muonCand_global_trkChi2", &muonCand_global_trkChi2_, "muonCand_global_trkChi2[nMuonCand]/D");
+  ntuple_->Branch("muonCand_global_trackerLayers", &muonCand_global_trackerLayers_, "muonCand_global_trackerLayers[nMuonCand]/I");
+  ntuple_->Branch("muonCand_global_trackerHits", &muonCand_global_trackerHits_, "muonCand_global_trackerHits[nMuonCand]/I");
+  ntuple_->Branch("muonCand_btlMatchChi2", &muonCand_btlMatchChi2_, "muonCand_btlMatchChi2[nMuonCand]/D");
+  ntuple_->Branch("muonCand_etlMatchChi2", &muonCand_etlMatchChi2_, "muonCand_etlMatchChi2[nMuonCand]/D");
+  ntuple_->Branch("muonCand_btlMatchTimeChi2", &muonCand_btlMatchTimeChi2_, "muonCand_btlMatchTimeChi2[nMuonCand]/D");
+  ntuple_->Branch("muonCand_etlMatchTimeChi2", &muonCand_etlMatchTimeChi2_, "muonCand_etlMatchTimeChi2[nMuonCand]/D");
+  ntuple_->Branch("muonCand_npixBarrel", &muonCand_npixBarrel_, "muonCand_npixBarrel[nMuonCand]/I");
+  ntuple_->Branch("muonCand_npixEndcap", &muonCand_npixEndcap_, "muonCand_npixEndcap[nMuonCand]/I");
+  ntuple_->Branch("muonCand_outermostHitPosition", &muonCand_outermostHitPosition_, "muonCand_outermostHitPosition[nMuonCand]/D");
+  ntuple_->Branch("muonCand_p", &muonCand_p_, "muonCand_p[nMuonCand]/D");
+  ntuple_->Branch("muonCand_beta", &muonCand_beta_, "muonCand_beta[nMuonCand]/D");
+  ntuple_->Branch("muonCand_t0", &muonCand_t0_, "muonCand_t0[nMuonCand]/D");
+  ntuple_->Branch("muonCand_sigmat0", &muonCand_sigmat0_, "muonCand_sigmat0[nMuonCand]/D");
+  ntuple_->Branch("muonCand_pathLength", &muonCand_pathLength_, "muonCand_pathLength[nMuonCand]/D");
+  ntuple_->Branch("muonCand_tmtd", &muonCand_tmtd_, "muonCand_tmtd[nMuonCand]/D");
+  ntuple_->Branch("muonCand_sigmatmtd", &muonCand_sigmatmtd_, "muonCand_sigmatmtd[nMuonCand]/D");
+  ntuple_->Branch("muonCand_tofMu", &muonCand_tofMu_, "muonCand_tofMu[nMuonCand]/D");
+  ntuple_->Branch("muonCand_sigmaTofMu", &muonCand_sigmaTofMu_, "muonCand_sigmaTofMu[nMuonCand]/D");
+  ntuple_->Branch("muonCand_mtdpos_x", &muonCand_mtdpos_x_, "muonCand_mtdpos_x[nMuonCand]/D");
+  ntuple_->Branch("muonCand_mtdpos_y", &muonCand_mtdpos_y_, "muonCand_mtdpos_y[nMuonCand]/D");
+  ntuple_->Branch("muonCand_mtdpos_z", &muonCand_mtdpos_z_, "muonCand_mtdpos_z[nMuonCand]/D");
+  
+  // ECAL Isolation ----------
+  ntuple_->Branch("nECAL", &nECAL_, "nECAL/I");
+  ntuple_->Branch("ecal_et", &ecal_et_, "ecal_et_[nECAL]/D");
+  ntuple_->Branch("ecal_pt", &ecal_pt_, "ecal_pt_[nECAL]/D");
+  ntuple_->Branch("ecal_eta", &ecal_eta_, "ecal_eta_[nECAL]/D");
+  ntuple_->Branch("ecal_phi", &ecal_phi_, "ecal_phi_[nECAL]/D");
+  ntuple_->Branch("ecal_charge", &ecal_charge_, "ecal_charge_[nECAL]/D");
+  ntuple_->Branch("ecal_px", &ecal_px_, "ecal_px_[nECAL]/D");
+  ntuple_->Branch("ecal_py", &ecal_py_, "ecal_py_[nECAL]/D");
+  ntuple_->Branch("ecal_pz", &ecal_pz_, "ecal_pz_[nECAL]/D");
+  ntuple_->Branch("ecal_vx", &ecal_vx_, "ecal_vx_[nECAL]/D");
+  ntuple_->Branch("ecal_vy", &ecal_vy_, "ecal_vy_[nECAL]/D");
+  ntuple_->Branch("ecal_vz", &ecal_vz_, "ecal_vz_[nECAL]/D");
+  ntuple_->Branch("ecal_time", &ecal_time_, "ecal_time_[nECAL]/D");
+  ntuple_->Branch("ecal_timeErr", &ecal_timeErr_, "ecal_timeErr_[nECAL]/D");
+  ntuple_->Branch("ecal_depth", &ecal_depth_, "ecal_depth_[nECAL]/D");
+  ntuple_->Branch("ecal_rho", &ecal_rho_, "ecal_rho_[nECAL]/D");
+  ntuple_->Branch("ecal_muonIdx", &ecal_muonIdx_, "ecal_muonIdx_[nECAL]/I");
+  ntuple_->Branch("ecal_nHits", &ecal_nHits_, "ecal_nHits_[nECAL]/I");
+  
+  ntuple_->Branch("nECALHits", &nECALHits_, "nECALHits/I");
+  ntuple_->Branch("ecal_hit_energy", &ecal_hit_energy_, "ecal_hit_energy_[nECALHits]/D");
+  ntuple_->Branch("ecal_hit_depth", &ecal_hit_depth_, "ecal_hit_depth_[nECALHits]/D");
+  ntuple_->Branch("ecal_hit_time", &ecal_hit_time_, "ecal_hit_time_[nECALHits]/D");
+  ntuple_->Branch("ecal_hit_timeErr", &ecal_hit_timeErr_, "ecal_hit_timeErr_[nECALHits]/D");
+  ntuple_->Branch("ecal_hit_pt2", &ecal_hit_pt2_, "ecal_hit_pt2_[nECALHits]/D");
+  ntuple_->Branch("ecal_hit_x", &ecal_hit_x_, "ecal_hit_x_[nECALHits]/D");
+  ntuple_->Branch("ecal_hit_y", &ecal_hit_y_, "ecal_hit_y_[nECALHits]/D");
+  ntuple_->Branch("ecal_hit_z", &ecal_hit_z_, "ecal_hit_z_[nECALHits]/D");
+  ntuple_->Branch("ecal_hit_eta", &ecal_hit_eta_, "ecal_hit_eta_[nECALHits]/D");
+  ntuple_->Branch("ecal_hit_phi", &ecal_hit_phi_, "ecal_hit_phi_[nECALHits]/D");
+  ntuple_->Branch("ecal_hit_fraction", &ecal_hit_fraction_, "ecal_hit_fraction_[nECALHits]/D");
+  ntuple_->Branch("ecal_hit_idx", &ecal_hit_idx_, "ecal_hit_idx_[nECALHits]/D");
+
+  ntuple_->Branch("nHCAL", &nHCAL_, "nHCAL/I");
+  ntuple_->Branch("hcal_et", &hcal_et_, "hcal_et_[nHCAL]/D");
+  ntuple_->Branch("hcal_pt", &hcal_pt_, "hcal_pt_[nHCAL]/D");
+  ntuple_->Branch("hcal_eta", &hcal_eta_, "hcal_eta_[nHCAL]/D");
+  ntuple_->Branch("hcal_phi", &hcal_phi_, "hcal_phi_[nHCAL]/D");
+  ntuple_->Branch("hcal_charge", &hcal_charge_, "hcal_charge_[nHCAL]/D");
+  ntuple_->Branch("hcal_px", &hcal_px_, "hcal_px_[nHCAL]/D");
+  ntuple_->Branch("hcal_py", &hcal_py_, "hcal_py_[nHCAL]/D");
+  ntuple_->Branch("hcal_pz", &hcal_pz_, "hcal_pz_[nHCAL]/D");
+  ntuple_->Branch("hcal_vx", &hcal_vx_, "hcal_vx_[nHCAL]/D");
+  ntuple_->Branch("hcal_vy", &hcal_vy_, "hcal_vy_[nHCAL]/D");
+  ntuple_->Branch("hcal_vz", &hcal_vz_, "hcal_vz_[nHCAL]/D");
+  ntuple_->Branch("hcal_time", &hcal_time_, "hcal_time_[nHCAL]/D");
+  ntuple_->Branch("hcal_timeErr", &hcal_timeErr_, "hcal_timeErr_[nHCAL]/D");
+  ntuple_->Branch("hcal_depth", &hcal_depth_, "hcal_depth_[nHCAL]/D");
+  ntuple_->Branch("hcal_rho", &hcal_rho_, "hcal_rho_[nHCAL]/D");
+  ntuple_->Branch("hcal_muonIdx", &hcal_muonIdx_, "hcal_muonIdx_[nHCAL]/I");
+  ntuple_->Branch("hcal_nHits", &hcal_nHits_, "hcal_nHits_[nHCAL]/I");
+
+  ntuple_->Branch("nHCALHits", &nHCALHits_, "nHCALHits/I");
+  ntuple_->Branch("hcal_hit_energy", &hcal_hit_energy_, "hcal_hit_energy_[nHCALHits]/D");
+  ntuple_->Branch("hcal_hit_depth", &hcal_hit_depth_, "hcal_hit_depth_[nHCALHits]/D");
+  ntuple_->Branch("hcal_hit_time", &hcal_hit_time_, "hcal_hit_time_[nHCALHits]/D");
+  ntuple_->Branch("hcal_hit_timeErr", &hcal_hit_timeErr_, "hcal_hit_timeErr_[nHCALHits]/D");
+  ntuple_->Branch("hcal_hit_pt2", &hcal_hit_pt2_, "hcal_hit_pt2_[nHCALHits]/D");
+  ntuple_->Branch("hcal_hit_x", &hcal_hit_x_, "hcal_hit_x_[nHCALHits]/D");
+  ntuple_->Branch("hcal_hit_y", &hcal_hit_y_, "hcal_hit_y_[nHCALHits]/D");
+  ntuple_->Branch("hcal_hit_z", &hcal_hit_z_, "hcal_hit_z_[nHCALHits]/D");
+  ntuple_->Branch("hcal_hit_eta", &hcal_hit_eta_, "hcal_hit_eta_[nHCALHits]/D");
+  ntuple_->Branch("hcal_hit_phi", &hcal_hit_phi_, "hcal_hit_phi_[nHCALHits]/D");
+  ntuple_->Branch("hcal_hit_fraction", &hcal_hit_fraction_, "hcal_hit_fraction_[nHCALHits]/D");
+  ntuple_->Branch("hcal_hit_idx", &hcal_hit_idx_, "hcal_hit_idx_[nHCALHits]/D");
+
+  ntuple_->Branch("nHGCAL_em", &nHGCAL_em_, "nHGCAL_em/I");
+  ntuple_->Branch("hgcal_em_et", &hgcal_em_et_, "hgcal_em_et/D");
+  ntuple_->Branch("hgcal_em_pt", &hgcal_em_pt_, "hgcal_em_pt/D");
+  ntuple_->Branch("hgcal_em_eta", &hgcal_em_eta_, "hgcal_em_eta/D");
+  ntuple_->Branch("hgcal_em_phi", &hgcal_em_phi_, "hgcal_em_phi/D");
+  ntuple_->Branch("hgcal_em_px", &hgcal_em_px_, "hgcal_em_px/D");
+  ntuple_->Branch("hgcal_em_py", &hgcal_em_py_, "hgcal_em_py/D");
+  ntuple_->Branch("hgcal_em_pz", &hgcal_em_pz_, "hgcal_em_pz/D");
+  ntuple_->Branch("hgcal_em_vx", &hgcal_em_vx_, "hgcal_em_vx/D");
+  ntuple_->Branch("hgcal_em_vy", &hgcal_em_vy_, "hgcal_em_vy/D");
+  ntuple_->Branch("hgcal_em_vz", &hgcal_em_vz_, "hgcal_em_vz/D");
+  ntuple_->Branch("hgcal_em_time", &hgcal_em_time_, "hgcal_em_time/D");
+  ntuple_->Branch("hgcal_em_timeErr", &hgcal_em_timeErr_, "hgcal_em_timeErr/D");
+  ntuple_->Branch("hgcal_em_depth", &hgcal_em_depth_, "hgcal_em_depth/D");
+  ntuple_->Branch("hgcal_em_algoID", &hgcal_em_algoID_, "hgcal_em_algoID/D");
+  ntuple_->Branch("hgcal_em_muonIdx", &hgcal_em_muonIdx_, "hgcal_em_muonIdx/I");
+  
+  ntuple_->Branch("nHGCAL_had", &nHGCAL_had_, "nHGCAL_had/I");
+  ntuple_->Branch("hgcal_had_et", &hgcal_had_et_, "hgcal_had_et/D");
+  ntuple_->Branch("hgcal_had_pt", &hgcal_had_pt_, "hgcal_had_pt/D");
+  ntuple_->Branch("hgcal_had_eta", &hgcal_had_eta_, "hgcal_had_eta/D");
+  ntuple_->Branch("hgcal_had_phi", &hgcal_had_phi_, "hgcal_had_phi/D");
+  ntuple_->Branch("hgcal_had_px", &hgcal_had_px_, "hgcal_had_px/D");
+  ntuple_->Branch("hgcal_had_py", &hgcal_had_py_, "hgcal_had_py/D");
+  ntuple_->Branch("hgcal_had_pz", &hgcal_had_pz_, "hgcal_had_pz/D");
+  ntuple_->Branch("hgcal_had_vx", &hgcal_had_vx_, "hgcal_had_vx/D");
+  ntuple_->Branch("hgcal_had_vy", &hgcal_had_vy_, "hgcal_had_vy/D");
+  ntuple_->Branch("hgcal_had_vz", &hgcal_had_vz_, "hgcal_had_vz/D");
+  ntuple_->Branch("hgcal_had_time", &hgcal_had_time_, "hgcal_had_time/D");
+  ntuple_->Branch("hgcal_had_timeErr", &hgcal_had_timeErr_, "hgcal_had_timeErr/D");
+  ntuple_->Branch("hgcal_had_depth", &hgcal_had_depth_, "hgcal_had_depth/D");
+  ntuple_->Branch("hgcal_had_algoID", &hgcal_had_algoID_, "hgcal_had_algoID/D");
+  ntuple_->Branch("hgcal_had_muonIdx", &hgcal_had_muonIdx_, "hgcal_had_muonIdx/I");
+
+  ntuple_->Branch("nTrack", &nTrack_, "nTrack/I");
+  ntuple_->Branch("track_pt", &track_pt_, "track_pt[nTrack]/D");
+  ntuple_->Branch("track_eta", &track_eta_, "track_eta[nTrack]/D");
+  ntuple_->Branch("track_phi", &track_phi_, "track_phi[nTrack]/D");
+  ntuple_->Branch("track_charge", &track_charge_, "track_charge[nTrack]/D");
+  ntuple_->Branch("track_px", &track_px_, "track_px[nTrack]/D");
+  ntuple_->Branch("track_py", &track_py_, "track_py[nTrack]/D");
+  ntuple_->Branch("track_pz", &track_pz_, "track_pz[nTrack]/D");
+  ntuple_->Branch("track_vx", &track_vx_, "track_vx[nTrack]/D");
+  ntuple_->Branch("track_vy", &track_vy_, "track_vy[nTrack]/D");
+  ntuple_->Branch("track_vz", &track_vz_, "track_vz[nTrack]/D");
+  ntuple_->Branch("track_dxy_bs", &track_dxy_bs_, "track_dxy_bs[nTrack]/D");
+  ntuple_->Branch("track_dxyError_bs", &track_dxyError_bs_, "track_dxyError_bs[nTrack]/D");
+  ntuple_->Branch("track_dz_bs", &track_dz_bs_, "track_dz_bs[nTrack]/D");
+  ntuple_->Branch("track_dzError", &track_dzError_, "track_dzError[nTrack]/D");
+  ntuple_->Branch("track_trkChi2", &track_trkChi2_, "track_trkChi2[nTrack]/D");
+  ntuple_->Branch("track_trackerLayers", &track_trackerLayers_, "track_trackerLayers[nTrack]/I");
+  ntuple_->Branch("track_trackerHits", &track_trackerHits_, "track_trackerHits[nTrack]/I");
+  ntuple_->Branch("track_lostTrackerHits", &track_lostTrackerHits_, "track_lostTrackerHits[nTrack]/I");
+  ntuple_->Branch("track_lostTrackerHitsIn", &track_lostTrackerHitsIn_, "track_lostTrackerHitsIn[nTrack]/I");
+  ntuple_->Branch("track_lostTrackerHitsOut", &track_lostTrackerHitsOut_, "track_lostTrackerHitsOut[nTrack]/I");
+  ntuple_->Branch("track_lostPixelHits", &track_lostPixelHits_, "track_lostPixelHits[nTrack]/I");
+  ntuple_->Branch("track_lostPixelBarrelHits", &track_lostPixelBarrelHits_, "track_lostPixelBarrelHits[nTrack]/I");
+  ntuple_->Branch("track_lostPixelEndcapHits", &track_lostPixelEndcapHits_, "track_lostPixelEndcapHits[nTrack]/I");
+  ntuple_->Branch("track_lostStripHits", &track_lostStripHits_, "track_lostStripHits[nTrack]/I");
+  ntuple_->Branch("track_lostStripTIBHits", &track_lostStripTIBHits_, "track_lostStripTIBHits[nTrack]/I");
+  ntuple_->Branch("track_lostStripTIDHits", &track_lostStripTIDHits_, "track_lostStripTIDHits[nTrack]/I");
+  ntuple_->Branch("track_lostStripTOBHits", &track_lostStripTOBHits_, "track_lostStripTOBHits[nTrack]/I");
+  ntuple_->Branch("track_lostStripTECHits", &track_lostStripTECHits_, "track_lostStripTECHits[nTrack]/I");
+  ntuple_->Branch("track_pixelLayers", &track_pixelLayers_, "track_pixelLayers[nTrack]/I");
+  ntuple_->Branch("track_pixelHits", &track_pixelHits_, "track_pixelHits[nTrack]/I");
+  ntuple_->Branch("track_muonHits", &track_muonHits_, "track_muonHits[nTrack]/I");
+  ntuple_->Branch("track_muonIdx", &track_muonIdx_, "track_muonIdx[nTrack]/I");
+  ntuple_->Branch("track_t0Src", &track_t0Src_, "track_t0Src[nTrack]/D");
+  ntuple_->Branch("track_Sigmat0Src", &track_Sigmat0Src_, "track_Sigmat0Src[nTrack]/D");
+  ntuple_->Branch("track_t0Pid", &track_t0Pid_, "track_t0Pid[nTrack]/D");
+  ntuple_->Branch("track_t0Safe", &track_t0Safe_, "track_t0Safe[nTrack]/D");
+  ntuple_->Branch("track_sigmat0Safe", &track_sigmat0Safe_, "track_sigmat0Safe[nTrack]/D");
+  ntuple_->Branch("track_mtdQualMVA", &track_mtdQualMVA_, "track_mtdQualMVA[nTrack]/D");
+  ntuple_->Branch("track_tMtd", &track_tMtd_, "track_tMtd[nTrack]/D");
+  ntuple_->Branch("track_tofPi", &track_tofPi_, "track_tofPi[nTrack]/D");
+  ntuple_->Branch("track_tofK", &track_tofK_, "track_tofK[nTrack]/D");
+  ntuple_->Branch("track_tofP", &track_tofP_, "track_tofP[nTrack]/D");
+  ntuple_->Branch("track_probPi", &track_probPi_, "track_probPi[nTrack]/D");
+  ntuple_->Branch("track_probK", &track_probK_, "track_probK[nTrack]/D");
+  ntuple_->Branch("track_probP", &track_probP_, "track_probP[nTrack]/D");
+  ntuple_->Branch("track_sigmatofpi", &track_sigmatofpi_, "track_sigmatofpi[nTrack]/D");
+  ntuple_->Branch("track_sigmatofk", &track_sigmatofk_, "track_sigmatofk[nTrack]/D");
+  ntuple_->Branch("track_sigmatofp", &track_sigmatofp_, "track_sigmatofp[nTrack]/D");
+  ntuple_->Branch("track_btlMatchChi2", &track_btlMatchChi2_, "track_btlMatchChi2[nTrack]/D");
+  ntuple_->Branch("track_btlMatchTimeChi2", &track_btlMatchTimeChi2_, "track_btlMatchTimeChi2[nTrack]/D");
+  ntuple_->Branch("track_etlMatchChi2", &track_etlMatchChi2_, "track_etlMatchChi2[nTrack]/D");
+  ntuple_->Branch("track_etlMatchTimeChi2", &track_etlMatchTimeChi2_, "track_etlMatchTimeChi2[nTrack]/D");
+  ntuple_->Branch("track_npixBarrel", &track_npixBarrel_, "track_npixBarrel[nTrack]/I");
+  ntuple_->Branch("track_npixEndcap", &track_npixEndcap_, "track_npixEndcap[nTrack]/I");
+  ntuple_->Branch("track_outermostHitPosition", &track_outermostHitPosition_, "track_outermostHitPosition[nTrack]/D");
+  ntuple_->Branch("track_p", &track_p_, "track_p[nTrack]/D");
+  ntuple_->Branch("track_beta", &track_beta_, "track_beta[nTrack]/D");
+  ntuple_->Branch("track_pathLength", &track_pathLength_, "track_pathLength[nTrack]/D");
+  ntuple_->Branch("track_mtdpos_x", &track_mtdpos_x_, "track_mtdpos_x[nTrack]/D");
+  ntuple_->Branch("track_mtdpos_y", &track_mtdpos_y_, "track_mtdpos_y[nTrack]/D");
+  ntuple_->Branch("track_mtdpos_z", &track_mtdpos_z_, "track_mtdpos_z[nTrack]/D");
+
+  /// End of isolation information
+ 
   SThltIterL3OISeedsFromL2Muons->setBranch(ntuple_,"hltIterL3OISeedsFromL2Muons");
   SThltIter0IterL3MuonPixelSeedsFromPixelTracks->setBranch(ntuple_,"hltIter0IterL3MuonPixelSeedsFromPixelTracks");
   SThltIter2IterL3MuonPixelSeeds->setBranch(ntuple_,"hltIter2IterL3MuonPixelSeeds");
@@ -2196,6 +2729,749 @@ void MuonHLTNtupler::Fill_TP( const edm::Event &iEvent, tpTemplate* tpTmp )
     }
   }
 }
+
+
+void MuonHLTNtupler::Fill_Muon2(const edm::Event &iEvent)
+{
+
+  using namespace trigger;
+  
+  edm::Handle<trigger::TriggerFilterObjectWithRefs> PrevFilterOutput;
+  if ( iEvent.getByToken(theMuonFilteredCollectionToken_, PrevFilterOutput) ){
+
+    std::vector<reco::RecoChargedCandidateRef> muons;
+    PrevFilterOutput->getObjects(trigger::TriggerMuon, muons);
+
+    Handle<RecoChargedCandidateCollection> mucands;
+    iEvent.getByToken(theMuonCollectionToken_, mucands);
+    
+    //const auto& muonAssoc = iEvent.get(muonAssocToken_);
+
+    edm::Handle<edm::ValueMap<float>> btlMatchChi2Handle;
+    edm::ValueMap<float> btlMatchChi2;
+    edm::ValueMap<float> etlMatchChi2;
+    edm::ValueMap<float> btlMatchTimeChi2;
+    edm::ValueMap<float> etlMatchTimeChi2;
+    edm::ValueMap<int> npixBarrel;
+    edm::ValueMap<int> npixEndcap;
+    edm::ValueMap<float> muonTrackOutermostHitPosition;
+    edm::ValueMap<float> muonTrackp;
+    edm::ValueMap<float> muonTrackBeta;
+    edm::ValueMap<float> muonTrackt0;
+    edm::ValueMap<float> muonTracksigmat0;
+    edm::ValueMap<float> muonTrackPathLength;
+    edm::ValueMap<float> muonTracktmtd;
+    edm::ValueMap<float> muonTracksigmatmtd;
+    edm::ValueMap<GlobalPoint> muonTrackmtdpos;
+    edm::ValueMap<float> muonTrackTofMu;
+    edm::ValueMap<float> muonTrackSigmaTofMu;
+
+    bool skipMTD = false;
+    if (iEvent.getByToken(muonbtlMatchChi2Token_, btlMatchChi2Handle)){
+      btlMatchChi2 = *btlMatchChi2Handle;
+      //btlMatchChi2 = iEvent.get(muonbtlMatchChi2Token_);
+      etlMatchChi2 = iEvent.get(muonetlMatchChi2Token_);
+      btlMatchTimeChi2 = iEvent.get(muonbtlMatchTimeChi2Token_);
+      etlMatchTimeChi2 = iEvent.get(muonetlMatchTimeChi2Token_);
+      npixBarrel = iEvent.get(muonnpixBarrelToken_);
+      npixEndcap = iEvent.get(muonnpixEndcapToken_);
+      muonTrackOutermostHitPosition = iEvent.get(muonTrackOutermostHitPositionToken_);
+      muonTrackp = iEvent.get(muonTrackpToken_);
+      muonTrackBeta = iEvent.get(muonTrackBetaToken_);
+      muonTrackt0 = iEvent.get(muonTrackt0Token_);
+      muonTracksigmat0 = iEvent.get(muonTracksigmat0Token_);
+      muonTrackPathLength = iEvent.get(muonTrackPathLengthToken_);
+      muonTracktmtd = iEvent.get(muonTracktmtdToken_);
+      muonTracksigmatmtd = iEvent.get(muonTracksigmatmtdToken_);
+      muonTrackmtdpos = iEvent.get(muonTrackmtdposToken_);
+      muonTrackTofMu = iEvent.get(muonTrackTofMuToken_);
+      muonTrackSigmaTofMu = iEvent.get(muonTrackSigmaTofMuToken_);
+    }else{
+      skipMTD = true;
+    }
+    
+    int _nMuon = 0;
+    //unsigned int index = 0;
+    for (unsigned int iMu = 0; iMu < mucands->size(); iMu++)
+      {
+
+	RecoChargedCandidateRef cand(mucands, iMu);
+	if (!triggerdByPreviousLevel(cand, muons))
+	  continue;
+
+	reco::RecoChargedCandidateRef mu(mucands, iMu);
+
+	bool hasMTDInfo = false;
+	//const reco::TrackRef muontrackref(iEvent.getHandle(theMuonCollectionToken_), index);
+	reco::TrackRef muontrackref = mu->track();
+	//index++;
+
+	if (skipMTD) {
+	  std::cout << "Event without MTD information" << std::endl;
+	  hasMTDInfo = false;
+	}else if (muonTrackPathLength[muontrackref] == -1) {
+	  //if (muonAssoc[muontrackref] == -1) {
+	  std::cout << "MuonExtenderWithMTD: track not associated" << std::endl;
+	  hasMTDInfo = false;
+	}else{
+	  std::cout << "MuonExtenderWithMTD: found a valid track" << std::endl;
+	  hasMTDInfo = true;
+	}
+	
+	muonCand_pt_[_nMuon]  = mu->pt();
+	muonCand_eta_[_nMuon] = mu->eta();
+	muonCand_phi_[_nMuon] = mu->phi();
+	muonCand_px_[_nMuon]  = mu->px();
+	muonCand_py_[_nMuon]  = mu->py();
+	muonCand_pz_[_nMuon]  = mu->pz();
+	muonCand_charge_[_nMuon] = mu->charge();
+	
+	if( mu->isGlobalMuon() ) muonCand_isGLB_[_nMuon] = 1;
+	if( mu->isStandAloneMuon() ) muonCand_isSTA_[_nMuon] = 1;
+	if( mu->isTrackerMuon() ) muonCand_isTRK_[_nMuon] = 1;
+	if( mu->isMuon() ) muonCand_isMuon_[_nMuon] = 1;
+	
+	const reco::Track* innerTrk = mu->bestTrack();
+
+        muonCand_vx_[_nMuon] = innerTrk->vx();
+        muonCand_vy_[_nMuon] = innerTrk->vy();
+	muonCand_vz_[_nMuon] = innerTrk->vz();
+	//muonCand_dxy_bs_[_nMuon] = innerTrk->dxy(bs->position());
+	//muonCand_dxyError_bs_[_nMuon] = innerTrk->dxyError(*bs);
+	//muonCand_dz_bs_[_nMuon] = innerTrk->dz(bs->position());
+	muonCand_dzError_[_nMuon] = innerTrk->dzError();
+	//if (innerTrk->dxyError(*bs) > 0.) {
+	//  muonCand_IPSig_[_nMuon] = abs(innerTrk->dxy(bs->position()) / innerTrk->dxyError(*bs));
+	//}
+	muonCand_inner_trkChi2_[_nMuon]             = innerTrk->normalizedChi2();
+	muonCand_inner_validFraction_[_nMuon]       = innerTrk->validFraction();
+	muonCand_inner_trackerLayers_[_nMuon]       = innerTrk->hitPattern().trackerLayersWithMeasurement();
+	muonCand_inner_trackerHits_[_nMuon]         = innerTrk->hitPattern().numberOfValidTrackerHits();
+	muonCand_inner_lostTrackerHits_[_nMuon]     = innerTrk->hitPattern().numberOfLostTrackerHits(HitPattern::TRACK_HITS);
+	muonCand_inner_lostTrackerHitsIn_[_nMuon]   = innerTrk->hitPattern().numberOfLostTrackerHits(HitPattern::MISSING_INNER_HITS);
+	muonCand_inner_lostTrackerHitsOut_[_nMuon]  = innerTrk->hitPattern().numberOfLostTrackerHits(HitPattern::MISSING_OUTER_HITS);
+	muonCand_inner_lostPixelHits_[_nMuon]       = innerTrk->hitPattern().numberOfLostPixelHits(HitPattern::TRACK_HITS);
+	muonCand_inner_lostPixelBarrelHits_[_nMuon] = innerTrk->hitPattern().numberOfLostPixelBarrelHits(HitPattern::TRACK_HITS);
+	muonCand_inner_lostPixelEndcapHits_[_nMuon] = innerTrk->hitPattern().numberOfLostPixelEndcapHits(HitPattern::TRACK_HITS);
+	muonCand_inner_lostStripHits_[_nMuon]       = innerTrk->hitPattern().numberOfLostStripHits(HitPattern::TRACK_HITS);
+	muonCand_inner_lostStripTIBHits_[_nMuon]    = innerTrk->hitPattern().numberOfLostStripTIBHits(HitPattern::TRACK_HITS);
+	muonCand_inner_lostStripTIDHits_[_nMuon]    = innerTrk->hitPattern().numberOfLostStripTIDHits(HitPattern::TRACK_HITS);
+	muonCand_inner_lostStripTOBHits_[_nMuon]    = innerTrk->hitPattern().numberOfLostStripTOBHits(HitPattern::TRACK_HITS);
+	muonCand_inner_lostStripTECHits_[_nMuon]    = innerTrk->hitPattern().numberOfLostStripTECHits(HitPattern::TRACK_HITS);
+	muonCand_inner_pixelLayers_[_nMuon]         = innerTrk->hitPattern().pixelLayersWithMeasurement();
+	muonCand_inner_pixelHits_[_nMuon]           = innerTrk->hitPattern().numberOfValidPixelHits();
+	
+	muonCand_global_muonHits_[_nMuon]           = innerTrk->hitPattern().numberOfValidMuonHits();
+	muonCand_global_trkChi2_[_nMuon]            = innerTrk->normalizedChi2();
+	muonCand_global_trackerLayers_[_nMuon]      = innerTrk->hitPattern().trackerLayersWithMeasurement();
+	muonCand_global_trackerHits_[_nMuon]        = innerTrk->hitPattern().numberOfValidTrackerHits();
+
+	if (hasMTDInfo){
+	  muonCand_btlMatchChi2_[_nMuon] = btlMatchChi2[muontrackref];
+	  muonCand_etlMatchChi2_[_nMuon] =  etlMatchChi2[muontrackref];
+	  muonCand_btlMatchTimeChi2_[_nMuon] =  btlMatchTimeChi2[muontrackref];
+	  muonCand_etlMatchTimeChi2_[_nMuon] =  etlMatchTimeChi2[muontrackref];
+	  muonCand_npixBarrel_[_nMuon] =  npixBarrel[muontrackref];
+	  muonCand_npixEndcap_[_nMuon] =  npixEndcap[muontrackref];
+	  muonCand_outermostHitPosition_[_nMuon] =  muonTrackOutermostHitPosition[muontrackref];
+	  muonCand_p_[_nMuon] =  muonTrackp[muontrackref];
+	  muonCand_beta_[_nMuon] =  muonTrackBeta[muontrackref];
+	  muonCand_t0_[_nMuon] =  muonTrackt0[muontrackref];
+	  muonCand_sigmat0_[_nMuon] =  muonTracksigmat0[muontrackref];
+	  muonCand_pathLength_[_nMuon] =  muonTrackPathLength[muontrackref];
+	  muonCand_tmtd_[_nMuon] =  muonTracktmtd[muontrackref];
+	  muonCand_sigmatmtd_[_nMuon] =  muonTracksigmatmtd[muontrackref];
+	  muonCand_tofMu_[_nMuon] =  muonTrackTofMu[muontrackref];
+	  muonCand_sigmaTofMu_[_nMuon] =  muonTrackSigmaTofMu[muontrackref];
+	  muonCand_mtdpos_x_[_nMuon] =  muonTrackmtdpos[muontrackref].x();
+	  muonCand_mtdpos_y_[_nMuon] =  muonTrackmtdpos[muontrackref].y();
+	  muonCand_mtdpos_z_[_nMuon] =  muonTrackmtdpos[muontrackref].z();
+	}
+	
+	_nMuon++;
+      }
+    
+    nMuonCand_ = _nMuon;
+  }
+}
+
+bool MuonHLTNtupler::triggerdByPreviousLevel(const reco::RecoChargedCandidateRef& candref,
+					     const std::vector<reco::RecoChargedCandidateRef>& vcands) {
+  unsigned int i = 0;
+  unsigned int i_max = vcands.size();
+  for (; i != i_max; ++i) {
+    if (candref == vcands[i])
+      return true;
+  }
+
+  return false;
+}
+
+
+/**
+   Fill isolation information for timing studies
+**/
+void MuonHLTNtupler::Fill_ECAL( const edm::Event &iEvent, const edm::EventSetup &iSetup)
+{
+  //auto const prop = propSetup_.init(iSetup);
+
+  edm::Handle<trigger::TriggerFilterObjectWithRefs> PrevFilterOutput;
+  if ( iEvent.getByToken(theMuonFilteredCollectionToken_, PrevFilterOutput) ){
+
+      // Rho - ECAL
+      edm::Handle<double> rhoHandle_ECAL;
+      double rho_ECAL = 0.0;
+      //if (doRhoCorrection_ECAL_) {
+      //iEvent.getByToken(rhoProducer_ecal_, rhoHandle_ECAL);
+      //rho_ecal = *(rhoHandle_ECAL.product());
+      //}
+            
+      // Get ECAL PF Clusters
+      
+      edm::Handle<reco::PFClusterCollection> clusterHandle_ECAL;
+      if (iEvent.getByToken(pfClusterProducer_ecal_, clusterHandle_ECAL)){
+	
+	int _nECAL = 0;
+	int _nHits = 0;
+
+	std::vector<reco::RecoChargedCandidateRef> muons;
+	PrevFilterOutput->getObjects(trigger::TriggerMuon, muons);
+
+	Handle<RecoChargedCandidateCollection> mucands;
+	iEvent.getByToken(theMuonCollectionToken_, mucands);
+        unsigned int nMuons = mucands->size();
+	for (unsigned int iMu = 0; iMu < nMuons; iMu++)
+	  {
+	    
+	    reco::RecoChargedCandidateRef muRef(mucands, iMu);
+	    reco::TrackRef trackRef = muRef->track();
+	    const Track& muon = *trackRef;
+	    if (!triggerdByPreviousLevel(muRef, muons))
+	      continue;	    
+
+	  /// Piece of code from cmssw/RecoEgamma/EgammaIsolationAlgos/src/EcalPFClusterIsolation.cc
+	  double drVeto2_ = -1;
+	  float etaStrip = -1;
+	  
+	  if (std::abs(muon.eta()) < 1.479) {
+	    drVeto2_ = drVetoBarrel_ECAL_ * drVetoBarrel_ECAL_;
+	    etaStrip = etaStripBarrel_ECAL_;
+	  } else {
+	    drVeto2_ = drVetoEndcap_ECAL_ * drVetoEndcap_ECAL_;
+	    etaStrip = etaStripEndcap_ECAL_;
+	  }
+
+	  for (size_t i = 0; i < clusterHandle_ECAL->size(); i++) {
+	  reco::PFClusterRef pfcluRef(clusterHandle_ECAL, i);
+	  const reco::PFCluster& pfclu = *pfcluRef;
+	  
+	  if (std::abs(muon.eta()) < 1.479) {
+	    if (std::abs(pfclu.pt()) < energyBarrel_ECAL_)
+	      continue;
+	  } else {
+	    if (std::abs(pfclu.energy()) < energyEndcap_ECAL_)
+	      continue;
+	  }
+	  
+	  float dEta = std::abs(muon.eta() - pfclu.eta());
+	  if (dEta < etaStrip)
+	    continue;
+	  if (not computedRVeto(muRef, pfcluRef, drMax_ECAL_, drVeto2_))
+	    continue;
+	  
+	  ecal_et_[_nECAL] = pfclu.energy();
+	  ecal_pt_[_nECAL] = pfclu.pt();
+	  ecal_eta_[_nECAL] = pfclu.eta();
+	  ecal_phi_[_nECAL] = pfclu.phi();
+	  ecal_charge_[_nECAL] = pfclu.charge();      
+	  ecal_px_[_nECAL] = pfclu.x();
+	  ecal_py_[_nECAL] = pfclu.y();
+	  ecal_pz_[_nECAL] = pfclu.z();
+	  ecal_vx_[_nECAL] = pfclu.vx();
+	  ecal_vy_[_nECAL] = pfclu.vy();
+	  ecal_vz_[_nECAL] = pfclu.vz();      
+	  ecal_time_[_nECAL] = (double)pfclu.time();
+	  ecal_timeErr_[_nECAL] = (double)pfclu.timeError();
+	  ecal_depth_[_nECAL] = pfclu.depth();
+	  ecal_rho_[_nECAL] = rho_ECAL;
+	  ecal_muonIdx_[_nECAL] = iMu;
+
+	  const std::vector<reco::PFRecHitFraction>& ecal_recHitFractions = pfclu.recHitFractions();
+
+	  unsigned int nHits = ecal_recHitFractions.size();
+	  for (unsigned int iH = 0; iH < nHits; ++iH) {
+	    reco::PFRecHitFraction ecal_hit = ecal_recHitFractions[iH];
+	    const PFRecHitRef& ecal_hitRef = ecal_hit.recHitRef();
+	    const reco::PFRecHit ecal_rechit = *ecal_hitRef;
+	    
+	    ecal_hit_energy_[_nHits] = ecal_rechit.energy();
+	    ecal_hit_depth_[_nHits] = ecal_rechit.depth();
+	    ecal_hit_time_[_nHits] = ecal_rechit.time();
+	    //ecal_hit_timeErr_[_nHits] = ecal_rechit.timeError();
+	    ecal_hit_pt2_[_nHits] = ecal_rechit.pt2();
+	    ecal_hit_x_[_nHits] = ecal_rechit.position().x();
+	    ecal_hit_y_[_nHits] = ecal_rechit.position().y();
+	    ecal_hit_z_[_nHits] = ecal_rechit.position().z();
+	    
+	    ecal_hit_eta_[_nHits] = ecal_rechit.positionREP().eta();
+	    ecal_hit_phi_[_nHits] = ecal_rechit.positionREP().phi();
+	    
+	    ecal_hit_fraction_[_nHits] = ecal_hit.fraction();
+	    ecal_hit_idx_[_nHits] = _nECAL;
+	    
+	    _nHits++;
+	  }
+
+	  ecal_nHits_[_nECAL] = nHits;
+	  
+	  _nECAL++;
+
+	  }
+	}
+      }    
+    }
+}
+
+void MuonHLTNtupler::Fill_HCAL(const edm::Event &iEvent, const edm::EventSetup &iSetup)
+{
+  //auto const prop = propSetup_.init(iSetup);
+
+  edm::Handle<trigger::TriggerFilterObjectWithRefs> PrevFilterOutput;
+  if ( iEvent.getByToken(theMuonFilteredCollectionToken_, PrevFilterOutput) ){
+
+    /**
+    if (doRhoCorrection_HCAL_) {
+      if (absEtaLowEdges_HCAL_.size() != effectiveAreas_HCAL_.size())
+	throw cms::Exception("IncompatibleVects") << "absEtaLowEdges and effectiveAreas should be of the same size. \n";
+      
+      if (absEtaLowEdges_HCAL_.at(0) != 0.0)
+	throw cms::Exception("IncompleteCoverage") << "absEtaLowEdges should start from 0. \n";
+      
+      for (unsigned int aIt = 0; aIt < absEtaLowEdges_HCAL_.size() - 1; aIt++) {
+	if (!(absEtaLowEdges_HCAL_.at(aIt) < absEtaLowEdges_HCAL_.at(aIt + 1)))
+	  throw cms::Exception("ImproperBinning") << "absEtaLowEdges entries should be in increasing order. \n";
+      }
+    }
+    edm::Handle<double> rhoHandle_HCAL;
+    if (doRhoCorrection_HCAL_) {
+      iEvent.getByToken(t_rho_HCAL_, rhoHandle_HCAL);
+      rho_HCAL = *(rhoHandle_HCAL.product());
+    }
+    **/
+
+    rho_HCAL = 0.0;
+    
+    std::vector<edm::Handle<reco::PFClusterCollection>> clusterHandles;
+    edm::Handle<reco::PFClusterCollection> clusterHcalHandle;
+  
+    //iEvent.getByToken(pfClusterProducerHCAL_, clusterHcalHandle);
+    if ( iEvent.getByToken(pfClusterProducerHCAL_, clusterHcalHandle) ){
+      
+      clusterHandles.push_back(clusterHcalHandle);
+
+      int _nHCAL = 0;
+      int _nHits = 0;
+
+      std::vector<reco::RecoChargedCandidateRef> muons;
+      PrevFilterOutput->getObjects(trigger::TriggerMuon, muons);
+      
+      Handle<RecoChargedCandidateCollection> mucands;
+      iEvent.getByToken(theMuonCollectionToken_, mucands);
+      unsigned int nMuons = mucands->size();
+      for (unsigned int iMu = 0; iMu < nMuons; iMu++){
+	
+	reco::RecoChargedCandidateRef muRef(mucands, iMu);
+	reco::TrackRef trackRef = muRef->track();
+	const Track& muon = *trackRef;
+	if (!triggerdByPreviousLevel(muRef, muons))
+	  continue;      
+	
+	double candAbsEta = std::abs(muon.eta());
+	float etaStrip = 0;
+	float dRVeto = 0;
+	if (candAbsEta < 1.479) {
+	  dRVeto = drVetoBarrel_HCAL_;
+	  etaStrip = etaStripBarrel_HCAL_;
+	} else {
+	  dRVeto = drVetoEndcap_HCAL_;
+	  etaStrip = etaStripEndcap_HCAL_;
+	}
+
+	for (unsigned int nHandle = 0; nHandle < clusterHandles.size(); nHandle++) {
+	  for (unsigned i = 0; i < clusterHandles[nHandle]->size(); i++) {
+	    const reco::PFClusterRef pfcluRef(clusterHandles[nHandle], i);
+	    const reco::PFCluster& pfclu = *pfcluRef;
+	    
+	    if (candAbsEta < 1.479) {
+	      if (std::abs(pfclu.pt()) < energyBarrel_HCAL_)
+		continue;
+	    } else {
+	      if (std::abs(pfclu.energy()) < energyEndcap_HCAL_)
+		continue;
+	    }
+	    
+	    float dEta = std::abs(muon.eta() - pfclu.eta());
+	    if (dEta < etaStrip)
+	      continue;
+	    
+	    float dR2 = deltaR2(muon.eta(), muon.phi(), pfclu.eta(), pfclu.phi());
+	    if (dR2 > (drMax_HCAL_ * drMax_HCAL_) || dR2 < (dRVeto * dRVeto))
+	      continue;
+
+	    hcal_et_[_nHCAL] = pfclu.energy();
+	    hcal_pt_[_nHCAL] = pfclu.pt();
+	    hcal_eta_[_nHCAL] = pfclu.eta();
+	    hcal_phi_[_nHCAL] = pfclu.phi();
+	    hcal_charge_[_nHCAL] = pfclu.charge();
+	    hcal_px_[_nHCAL] = pfclu.x();
+	    hcal_py_[_nHCAL] = pfclu.y();
+	    hcal_pz_[_nHCAL] = pfclu.z();
+	    hcal_vx_[_nHCAL] = pfclu.vx();
+	    hcal_vy_[_nHCAL] = pfclu.vy();
+	    hcal_vz_[_nHCAL] = pfclu.vz();
+	    hcal_time_[_nHCAL] = (double)pfclu.time();
+	    hcal_timeErr_[_nHCAL] = (double)pfclu.timeError();
+	    hcal_depth_[_nHCAL] = pfclu.depth();
+	    hcal_rho_[_nHCAL] = rho_HCAL;
+	    hcal_muonIdx_[_nHCAL] = iMu;
+	    
+	    const std::vector<reco::PFRecHitFraction>& hcal_recHitFractions = pfclu.recHitFractions();
+	    
+	    unsigned int nHits = hcal_recHitFractions.size();
+	    for (unsigned int iH = 0; iH < nHits; ++iH) {
+	      reco::PFRecHitFraction hcal_hit = hcal_recHitFractions[iH];
+	      const PFRecHitRef& hcal_hitRef = hcal_hit.recHitRef();
+	      const reco::PFRecHit hcal_rechit = *hcal_hitRef;
+	      
+	      hcal_hit_energy_[_nHits] = hcal_rechit.energy();
+	      hcal_hit_depth_[_nHits] = hcal_rechit.depth();
+	      hcal_hit_time_[_nHits] = hcal_rechit.time();
+	      //hcal_hit_timeErr_[_nHits] = hcal_rechit.timeError();
+	      hcal_hit_pt2_[_nHits] = hcal_rechit.pt2();
+	      hcal_hit_x_[_nHits] = hcal_rechit.position().x();
+	      hcal_hit_y_[_nHits] = hcal_rechit.position().y();
+	      hcal_hit_z_[_nHits] = hcal_rechit.position().z();
+
+	      hcal_hit_eta_[_nHits] = hcal_rechit.positionREP().eta();
+	      hcal_hit_phi_[_nHits] = hcal_rechit.positionREP().phi();
+	      
+	      hcal_hit_fraction_[_nHits] = hcal_hit.fraction();
+	      hcal_hit_idx_[_nHits] = _nHCAL;
+	      
+	      _nHits++;
+	    }
+	    
+	    hcal_nHits_[_nHCAL] = nHits;	
+	    _nHCAL++;
+	    
+	  }
+	}
+      }
+      nHCAL_ = _nHCAL;
+      nHCALHits_ = _nHits;
+    }
+  }
+}
+
+void MuonHLTNtupler::Fill_HGCAL(const edm::Event &iEvent, const edm::EventSetup &iSetup)
+{
+  //auto const prop = propSetup_.init(iSetup);
+
+  edm::Handle<trigger::TriggerFilterObjectWithRefs> PrevFilterOutput;
+  if ( iEvent.getByToken(theMuonFilteredCollectionToken_, PrevFilterOutput) ){
+
+    edm::Handle<reco::CaloClusterCollection> clusterHandle_HGCAL;
+    if ( iEvent.getByToken(layerClusterProducer_HGCAL_, clusterHandle_HGCAL) ){
+
+      edm::Handle<edm::ValueMap<std::pair<float,float>>> clusterTimeHandle_HGCAL;
+      iEvent.getByToken(hgcalLayerClustersTime_, clusterTimeHandle_HGCAL);
+      
+      std::vector<reco::CaloCluster> layerClusters = *(clusterHandle_HGCAL.product());
+      edm::ValueMap<std::pair<float,float>> layerClusterTime = *(clusterTimeHandle_HGCAL.product());
+      
+      int _nHGCAL_em = 0;
+      int _nHGCAL_had = 0;
+
+      std::vector<reco::RecoChargedCandidateRef> muons;
+      PrevFilterOutput->getObjects(trigger::TriggerMuon, muons);
+	
+      Handle<RecoChargedCandidateCollection> mucands;
+      iEvent.getByToken(theMuonCollectionToken_, mucands);
+
+      unsigned int nMuons = mucands->size();
+      for (unsigned int iMu = 0; iMu < nMuons; iMu++){
+	
+        reco::RecoChargedCandidateRef muRef(mucands, iMu);
+        reco::TrackRef trackRef = muRef->track();
+        const Track& muon = *trackRef;
+        if (!triggerdByPreviousLevel(muRef, muons))
+          continue;
+
+	float minDR2_Had = drVetoHad_HGCAL_ * drVetoHad_HGCAL_;
+	float minDR2_EM  = drVetoEM_HGCAL_ * drVetoEM_HGCAL_;
+	float maxDR2     = drMax_HGCAL_ * drMax_HGCAL_;
+
+	int index = 0;
+	for (auto& clus : layerClusters) {
+
+	  const edm::Ref<reco::CaloClusterCollection> clusRef(iEvent.getHandle(layerClusterProducer_HGCAL_), index);
+
+	  bool doEM  = true;
+	  bool doHad = true;
+	  if (clus.seed().det() != DetId::HGCalEE) doEM = false;
+	  if (clus.seed().det() != DetId::HGCalHSi && clus.seed().det() != DetId::HGCalHSc) doHad = false;
+	  if (!doEM && !doHad) continue;
+
+	  float dPhi = reco::deltaPhi(muon.phi(), clus.phi());
+	  if (dPhi > drMax_HGCAL_) {
+	    continue;
+	  }
+
+	  float dR2 = reco::deltaR2(muon.eta(), muon.phi(), clus.eta(), clus.phi());
+	  if (dR2 > maxDR2) {
+	    continue;
+	  }
+	  
+	  if (doEM){
+	    hgcal_em_et_[_nHGCAL_em] = clus.energy();
+            //hgcal_em_pt_[_nHGCAL_em] = clus.pt();
+            hgcal_em_eta_[_nHGCAL_em] = clus.eta();
+            hgcal_em_phi_[_nHGCAL_em] = clus.phi();
+            hgcal_em_px_[_nHGCAL_em] = clus.x();
+            hgcal_em_py_[_nHGCAL_em] = clus.y();
+            hgcal_em_pz_[_nHGCAL_em] = clus.z();
+            //hgcal_em_vx_[_nHGCAL_em] = clus.vx();
+            //hgcal_em_vy_[_nHGCAL_em] = clus.vy();
+            //hgcal_em_vz_[_nHGCAL_em] = clus.vz();
+            hgcal_em_time_[_nHGCAL_em] = (double)layerClusterTime[clusRef].first;
+            hgcal_em_timeErr_[_nHGCAL_em] = (double)layerClusterTime[clusRef].second;
+            //hgcal_em_depth_[_nHGCAL_em] = clus.depth();
+	    hgcal_em_algoID_[_nHGCAL_em] = clus.algo();
+            hgcal_em_muonIdx_[_nHGCAL_em] = iMu;
+
+	    _nHGCAL_em++;
+	  }
+	  if (doHad){
+            hgcal_had_et_[_nHGCAL_had] = clus.energy();
+            //hgcal_had_pt_[_nHGCAL_had] = clus.pt();
+            hgcal_had_eta_[_nHGCAL_had] = clus.eta();
+            hgcal_had_phi_[_nHGCAL_had] = clus.phi();
+            hgcal_had_px_[_nHGCAL_had] = clus.x();
+            hgcal_had_py_[_nHGCAL_had] = clus.y();
+            hgcal_had_pz_[_nHGCAL_had] = clus.z();
+            //hgcal_had_vx_[_nHGCAL_had] = clus.vx();
+            //hgcal_had_vy_[_nHGCAL_had] = clus.vy();
+            //hgcal_had_vz_[_nHGCAL_had] = clus.vz();
+            hgcal_had_time_[_nHGCAL_had] = (double)layerClusterTime[clusRef].first;
+            hgcal_had_timeErr_[_nHGCAL_had] = (double)layerClusterTime[clusRef].second;
+            //hgcal_had_depth_[_nHGCAL_had] = clus.depth();
+            hgcal_had_algoID_[_nHGCAL_had] = clus.algo();
+            hgcal_had_muonIdx_[_nHGCAL_had] = iMu;
+
+            _nHGCAL_had++;
+          }
+	  index++;
+	}
+      }
+      nHGCAL_em_ = _nHGCAL_em;
+      nHGCAL_had_ = _nHGCAL_had;
+    }
+  }
+}
+
+void MuonHLTNtupler::Fill_Track(const edm::Event &iEvent, const edm::EventSetup &iSetup)
+{
+  //auto const prop = propSetup_.init(iSetup);
+
+  edm::Handle<trigger::TriggerFilterObjectWithRefs> PrevFilterOutput;
+  if ( iEvent.getByToken(theMuonFilteredCollectionToken_, PrevFilterOutput) ){
+
+    Handle<TrackCollection> tracksH;
+    if ( iEvent.getByToken(theTrackCollectionToken_, tracksH) ){
+
+      const TrackCollection tracks = *(tracksH.product());
+      //const auto& trackAssoc = iEvent.get(trackAssocToken_);
+      
+      const auto& t0Src = iEvent.get(t0SrcToken_);
+      const auto& Sigmat0Src = iEvent.get(Sigmat0SrcToken_);
+      const auto& t0Pid = iEvent.get(t0PidToken_);
+      const auto& t0Safe = iEvent.get(t0SafePidToken_);
+      const auto& sigmat0Safe = iEvent.get(sigmat0SafePidToken_);
+      const auto& mtdQualMVA = iEvent.get(trackMVAQualToken_);
+      const auto& tMtd = iEvent.get(tmtdToken_);
+      const auto& tofPi = iEvent.get(tofPiToken_);
+      const auto& tofK = iEvent.get(tofKToken_);
+      const auto& tofP = iEvent.get(tofPToken_);
+      const auto& probPi = iEvent.get(probPiToken_);
+      const auto& probK = iEvent.get(probKToken_);
+      const auto& probP = iEvent.get(probPToken_);
+      const auto& sigmatofpi = iEvent.get(sigmatofpiToken_);
+      const auto& sigmatofk = iEvent.get(sigmatofkToken_);
+      const auto& sigmatofp = iEvent.get(sigmatofpToken_);
+      const auto& btlMatchChi2 = iEvent.get(btlMatchChi2Token_);
+      const auto& btlMatchTimeChi2 = iEvent.get(btlMatchTimeChi2Token_);
+      const auto& etlMatchChi2 = iEvent.get(etlMatchChi2Token_);
+      const auto& etlMatchTimeChi2 = iEvent.get(etlMatchTimeChi2Token_);
+      const auto& npixBarrel = iEvent.get(npixBarrelToken_);
+      const auto& npixEndcap = iEvent.get(npixEndcapToken_);
+      const auto& trackOutermostHitPosition = iEvent.get(trackOutermostHitPositionToken_);
+      const auto& trackp = iEvent.get(trackpSrcToken_);
+      const auto& trackBeta = iEvent.get(trackBetaSrcToken_);
+      const auto& trackPathLength = iEvent.get(trackPathLengthToken_);
+      const auto& trackmtdpos = iEvent.get(trackmtdposToken_);
+      
+      std::vector<reco::RecoChargedCandidateRef> muons;
+      PrevFilterOutput->getObjects(trigger::TriggerMuon, muons);
+	
+      Handle<RecoChargedCandidateCollection> mucands;
+      iEvent.getByToken(theMuonCollectionToken_, mucands);
+
+      int _nTrack = 0;
+      unsigned int nMuons = mucands->size();
+      for (unsigned int iMu = 0; iMu < nMuons; iMu++){
+	
+        reco::RecoChargedCandidateRef muRef(mucands, iMu);
+        reco::TrackRef trackRef = muRef->track();
+        const Track& muon = *trackRef;
+        if (!triggerdByPreviousLevel(muRef, muons))
+          continue;
+
+	reco::isodeposit::Direction muonDir(muon.eta(), muon.phi());
+
+	double vtx_z = muon.vz();
+	
+	muonisolation::Range<float> zRange(vtx_z - theDiff_z, vtx_z + theDiff_z);
+	muonisolation::Range<float> rRange(0, theDiff_r);
+
+	unsigned int index = 0;
+	for (auto const& tk : tracks) {
+
+	  /// Initialize MTD information, taken from RecoMTD/TimingIDTools/plugins/MVATrainingNtuple.cc#L612
+	  bool hasMTDInfo = false;
+	  const reco::TrackRef trackref(iEvent.getHandle(theTrackCollectionToken_), index);
+	  index++;
+
+	  if (trackPathLength[trackref] == -1) {
+	    //if (trackAssoc[trackref] == -1) {
+	    std::cout << "TrackExtenderWithMTD: track not associated" << std::endl;
+	    hasMTDInfo = false;
+	  }else{
+	    std::cout << "TrackExtenderWithMTD: found a valid MTD track" << std::endl;
+	    hasMTDInfo = true;
+	  }
+	    
+	  /// Piece of code from RecoMuon/MuonIsolation/plugin/TrackSelector.cc
+	  float tZ = tk.vz();
+	  float tPt = tk.pt();
+	  float tChi2Ndof = tk.normalizedChi2();
+	  
+	  if (!zRange.inside(tZ))
+	    continue;
+	  if (tPt < thePt_Min)
+	    continue;
+	  if (tChi2Ndof > theChi2Ndof_Max)
+	    continue;
+	  
+	  float tEta = tk.eta();
+	  float tPhi = tk.phi();
+	  if (muonDir.deltaR2(reco::isodeposit::Direction(tEta, tPhi)) > theDR_Max)
+	    continue;
+
+	  if (muonDir.deltaR2(reco::isodeposit::Direction(tEta, tPhi)) < theDR_Veto)
+            continue;
+
+	  if (theNHits_Min > 0) {
+	    unsigned int tHits = tk.numberOfValidHits();
+	    if (tHits < theNHits_Min)
+	      continue;
+	  }
+	  
+	  if (theChi2Prob_Min > 0) {
+	    float tChi2Prob = ChiSquaredProbability(tk.chi2(), tk.ndof());
+	    if (tChi2Prob < theChi2Prob_Min)
+	      continue;
+	  }
+	  
+	  ////---------
+
+	  track_pt_[_nTrack] = tk.pt();
+	  track_eta_[_nTrack] = tk.eta();
+	  track_phi_[_nTrack] = tk.phi();
+	  track_charge_[_nTrack] = tk.charge();
+	  track_px_[_nTrack] = tk.px();
+	  track_py_[_nTrack] = tk.py();
+	  track_pz_[_nTrack] = tk.pz();
+	  track_vx_[_nTrack] = tk.vx();
+	  track_vy_[_nTrack] = tk.vy();
+	  track_vz_[_nTrack] = tk.vz();
+	  //track_dxy_bs_[_nTrack] = tk.dxy(bs->position());
+	  //track_dxyError_bs_[_nTrack] = tk.dxyError(*bs);
+	  //track_dz_bs_[_nTrack] = tk.dz(bs->position());
+	  track_dzError_[_nTrack] = tk.dzError();
+	  track_trkChi2_[_nTrack] = tk.normalizedChi2();
+	  track_trackerLayers_[_nTrack] = tk.hitPattern().trackerLayersWithMeasurement();
+	  track_trackerHits_[_nTrack] = tk.hitPattern().numberOfValidTrackerHits();
+	  track_lostTrackerHits_[_nTrack] = tk.hitPattern().numberOfLostTrackerHits(HitPattern::TRACK_HITS);
+	  track_lostTrackerHitsIn_[_nTrack] = tk.hitPattern().numberOfLostTrackerHits(HitPattern::MISSING_INNER_HITS);
+	  track_lostTrackerHitsOut_[_nTrack] = tk.hitPattern().numberOfLostTrackerHits(HitPattern::MISSING_OUTER_HITS);
+	  track_lostPixelHits_[_nTrack] = tk.hitPattern().numberOfLostPixelHits(HitPattern::TRACK_HITS);
+	  track_lostPixelBarrelHits_[_nTrack] = tk.hitPattern().numberOfLostPixelBarrelHits(HitPattern::TRACK_HITS);
+	  track_lostPixelEndcapHits_[_nTrack] = tk.hitPattern().numberOfLostPixelEndcapHits(HitPattern::TRACK_HITS);
+	  track_lostStripHits_[_nTrack] = tk.hitPattern().numberOfLostStripHits(HitPattern::TRACK_HITS);
+	  track_lostStripTIBHits_[_nTrack] = tk.hitPattern().numberOfLostStripTIBHits(HitPattern::TRACK_HITS);
+	  track_lostStripTIDHits_[_nTrack] = tk.hitPattern().numberOfLostStripTIDHits(HitPattern::TRACK_HITS);
+	  track_lostStripTOBHits_[_nTrack] = tk.hitPattern().numberOfLostStripTOBHits(HitPattern::TRACK_HITS);
+	  track_lostStripTECHits_[_nTrack] = tk.hitPattern().numberOfLostStripTECHits(HitPattern::TRACK_HITS);
+	  track_pixelLayers_[_nTrack] = tk.hitPattern().pixelLayersWithMeasurement();
+	  track_pixelHits_[_nTrack] = tk.hitPattern().numberOfValidPixelHits();
+	  track_muonIdx_[_nTrack] = iMu;
+	  if (hasMTDInfo){
+            track_t0Src_[_nTrack] = t0Src[trackref];
+	    track_Sigmat0Src_[_nTrack] = Sigmat0Src[trackref];
+	    track_t0Pid_[_nTrack] = t0Pid[trackref];
+	    track_t0Safe_[_nTrack] = t0Safe[trackref];
+	    track_sigmat0Safe_[_nTrack] = sigmat0Safe[trackref];
+	    track_mtdQualMVA_[_nTrack] = mtdQualMVA[trackref];
+	    track_tMtd_[_nTrack] = tMtd[trackref];
+	    track_tofPi_[_nTrack] = tofPi[trackref];
+	    track_tofK_[_nTrack] = tofK[trackref];
+	    track_tofP_[_nTrack] = tofP[trackref];
+	    track_probPi_[_nTrack] = probPi[trackref];
+	    track_probK_[_nTrack] = probK[trackref];
+	    track_probP_[_nTrack] = probP[trackref];
+	    track_sigmatofpi_[_nTrack] = sigmatofpi[trackref];
+	    track_sigmatofk_[_nTrack] = sigmatofk[trackref];
+	    track_sigmatofp_[_nTrack] = sigmatofp[trackref];
+	    track_btlMatchChi2_[_nTrack] = btlMatchChi2[trackref];
+	    track_btlMatchTimeChi2_[_nTrack] = btlMatchTimeChi2[trackref];
+	    track_etlMatchChi2_[_nTrack] = etlMatchChi2[trackref];
+	    track_etlMatchTimeChi2_[_nTrack] = etlMatchTimeChi2[trackref];
+	    track_npixBarrel_[_nTrack] = npixBarrel[trackref];
+	    track_npixEndcap_[_nTrack] = npixEndcap[trackref];
+	    track_outermostHitPosition_[_nTrack] = trackOutermostHitPosition[trackref];
+	    track_p_[_nTrack] = trackp[trackref];
+	    track_beta_[_nTrack] = trackBeta[trackref];
+	    track_pathLength_[_nTrack] = trackPathLength[trackref];
+	    track_mtdpos_x_[_nTrack] = trackmtdpos[trackref].x();
+	    track_mtdpos_y_[_nTrack] = trackmtdpos[trackref].y();
+	    track_mtdpos_z_[_nTrack] = trackmtdpos[trackref].z();
+          }
+	  _nTrack++;
+	}
+      }
+      nTrack_ = _nTrack;
+    }        
+  }
+}
+
+bool MuonHLTNtupler::computedRVeto(RecoChargedCandidateRef candRef, reco::PFClusterRef pfclu, double drMAX, double drVeto2_) {
+  float dR2 = deltaR2(candRef->eta(), candRef->phi(), pfclu->eta(), pfclu->phi());
+  if (dR2 > (drMAX * drMAX) || dR2 < drVeto2_)
+    return false;
+  else
+    return true;
+}
+
 
 void MuonHLTNtupler::fill_trackTemplate(
   const edm::Event &iEvent,

@@ -44,6 +44,7 @@
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 #include "HLTrigger/HLTcore/interface/HLTConfigProvider.h"
 #include "HLTrigger/HLTcore/interface/HLTEventAnalyzerAOD.h"
+#include "DataFormats/HLTReco/interface/TriggerFilterObjectWithRefs.h" // New    
 #include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h"
 
 #include "SimDataFormats/GeneratorProducts/interface/GenEventInfoProduct.h"
@@ -67,6 +68,18 @@
 
 #include "Geometry/Records/interface/TrackerDigiGeometryRecord.h"
 #include "Geometry/TrackerGeometryBuilder/interface/TrackerGeometry.h"
+
+#include "RecoMuon/TrackerSeedGenerator/interface/SeedMvaEstimator.h"
+#include "MuonAnalysis/MuonAssociators/interface/PropagateToMuonSetup.h"
+
+#include "PhysicsTools/IsolationAlgos/interface/IsoDepositExtractor.h"
+#include "PhysicsTools/IsolationAlgos/interface/IsoDepositExtractorFactory.h"
+#include "DataFormats/RecoCandidate/interface/RecoEcalCandidate.h"
+#include "DataFormats/RecoCandidate/interface/RecoEcalCandidateIsolation.h"
+
+#include "DataFormats/ParticleFlowReco/interface/PFCluster.h"
+#include "DataFormats/ParticleFlowReco/interface/PFClusterFwd.h"
+
 ////////////////////////////
 // DETECTOR GEOMETRY HEADERS
 #include "MagneticField/Engine/interface/MagneticField.h"
@@ -82,6 +95,9 @@
 #include "Geometry/TrackerGeometryBuilder/interface/PixelTopologyBuilder.h"
 #include "Geometry/Records/interface/StackedTrackerGeometryRecord.h"
 
+#include "SimDataFormats/Associations/interface/TrackToTrackingParticleAssociator.h"
+#include "SimDataFormats/Associations/interface/MtdSimLayerClusterToTPAssociatorBaseImpl.h"
+#include "SimDataFormats/Associations/interface/MtdRecoClusterToSimLayerClusterAssociationMap.h"
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingParticle.h"
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingVertex.h"
 #include "SimDataFormats/TrackingHit/interface/PSimHitContainer.h"
@@ -137,14 +153,23 @@ private:
   void Fill_L1Track(const edm::Event &iEvent, const edm::EventSetup &iSetup);
   void Fill_HLT(const edm::Event &iEvent, bool isMYHLT);
   void Fill_Muon(const edm::Event &iEvent);
+  void Fill_Muon2(const edm::Event &iEvent);
   void Fill_HLTMuon(const edm::Event &iEvent);
   void Fill_L1Muon(const edm::Event &iEvent);
   void Fill_GenParticle(const edm::Event &iEvent);
+  void Fill_ECAL(const edm::Event &iEvent, const edm::EventSetup &iSetup);
+  void Fill_HCAL(const edm::Event &iEvent, const edm::EventSetup &iSetup);
+  void Fill_HGCAL(const edm::Event &iEvent, const edm::EventSetup &iSetup);
+  void Fill_Track(const edm::Event &iEvent, const edm::EventSetup &iSetup);
 
+  bool computedRVeto(RecoChargedCandidateRef candRef, reco::PFClusterRef pfclu, double drMAX, double drVeto2_);
+  
   //For Rerun (Fill_IterL3*)
   void Fill_IterL3(const edm::Event &iEvent, const edm::EventSetup &iSetup);
   void Fill_Seed(const edm::Event &iEvent, const edm::EventSetup &iSetup);
 
+  bool triggerdByPreviousLevel(const reco::RecoChargedCandidateRef& candref, const std::vector<reco::RecoChargedCandidateRef>& vcands);
+  
   bool SavedTriggerCondition( std::string& pathName );
   bool SavedFilterCondition( std::string& filterName );
 
@@ -166,6 +191,9 @@ private:
   edm::EDGetTokenT<reco::TrackToTrackingParticleAssociator> associatorToken;
   edm::EDGetTokenT<TrackingParticleCollection> trackingParticleToken;
 
+  //const PropagateToMuonSetup propSetup_;
+  //const edm::EDGetTokenT< reco::BeamSpot >                         t_beamSpot_;
+  
   // edm::EDGetTokenT< std::vector<reco::Muon> >                t_offlineMuon_;
   edm::EDGetTokenT< edm::View<reco::Muon> >                  t_offlineMuon_;
   edm::EDGetTokenT< reco::VertexCollection >                 t_offlineVertex_;
@@ -205,6 +233,109 @@ private:
   edm::EDGetTokenT< edm::View<reco::Track> >               t_hltIter2IterL3FromL1MuonTrack_;
   edm::EDGetTokenT< edm::View<reco::Track> >               t_hltIter3IterL3FromL1MuonTrack_;
 
+
+  const edm::EDGetTokenT<reco::RecoChargedCandidateCollection> theMuonCollectionToken_;
+  const edm::EDGetTokenT<trigger::TriggerFilterObjectWithRefs> theMuonFilteredCollectionToken_;
+  const edm::EDGetTokenT<edm::ValueMap<int>> muonAssocToken_;
+  
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonbtlMatchChi2Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonetlMatchChi2Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonbtlMatchTimeChi2Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonetlMatchTimeChi2Token_;
+  const edm::EDGetTokenT<edm::ValueMap<int>>   muonnpixBarrelToken_;
+  const edm::EDGetTokenT<edm::ValueMap<int>>   muonnpixEndcapToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackOutermostHitPositionToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackpToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackBetaToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackt0Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTracksigmat0Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackPathLengthToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTracktmtdToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTracksigmatmtdToken_;
+  const edm::EDGetTokenT<edm::ValueMap<GlobalPoint>> muonTrackmtdposToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackTofMuToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackSigmaTofMuToken_;
+  
+  // Custom for isolation ----
+  
+  const edm::EDGetTokenT<reco::PFClusterCollection> pfClusterProducer_ecal_;
+  const edm::EDGetTokenT<double> t_rho_ECAL_;
+
+  const double drMax_ECAL_;
+  const double drVetoBarrel_ECAL_;
+  const double drVetoEndcap_ECAL_;
+  const double etaStripBarrel_ECAL_;
+  const double etaStripEndcap_ECAL_;
+  const double energyBarrel_ECAL_;
+  const double energyEndcap_ECAL_;
+
+  const edm::EDGetTokenT<reco::PFClusterCollection> pfClusterProducerHCAL_;
+  const edm::EDGetTokenT<double> t_rho_HCAL_;
+
+  const double drMax_HCAL_;
+  const double drVetoBarrel_HCAL_;
+  const double drVetoEndcap_HCAL_;
+  const double etaStripBarrel_HCAL_;
+  const double etaStripEndcap_HCAL_;
+  const double energyBarrel_HCAL_;
+  const double energyEndcap_HCAL_;
+  
+  const edm::EDGetTokenT<reco::CaloClusterCollection> layerClusterProducer_HGCAL_;
+  const edm::EDGetTokenT<edm::ValueMap<std::pair<float, float>>> hgcalLayerClustersTime_; // Feed with timeLayerCluster  
+  
+  const double drVetoHad_HGCAL_;
+  const	double drVetoEM_HGCAL_;
+  const	double drMax_HGCAL_;
+  
+  const double theDiff_r;                                                 //! transverse distance to vertex 
+  const double theDiff_z;                                                 //! z distance to vertex
+  const double theDR_Max;                                                 //! Maximum cone angle for deposits 
+  const double theDR_Veto;                                                //! Veto cone angle
+  const unsigned int theNHits_Min;                                        //! trk.numberOfValidHits >= theNHits_Min
+  const double theChi2Ndof_Max;                                           //! trk.normalizedChi2 < theChi2Ndof_Max
+  const double theChi2Prob_Min;  //! ChiSquaredProbability(trk.chi2,trk.ndof) > theChi2Prob_Min
+  const double thePt_Min;        //! min track pt to include into iso deposit  
+  
+  const edm::EDGetTokenT<reco::TrackCollection> theTrackCollectionToken_;
+
+  //const edm::EDGetTokenT<reco::TrackCollection> RecMTDTrackToken_;
+  //const edm::EDGetTokenT<reco::TPToSimCollectionMtd> tp2SimAssociationMapToken_;
+  //const edm::EDGetTokenT<MtdRecoClusterToSimLayerClusterAssociationMap> r2sAssociationMapToken_;
+  const edm::EDGetTokenT<edm::ValueMap<int>> trackAssocToken_;
+  //const edm::EDGetTokenT<TrackingParticleCollection> trackingParticleCollectionToken_;
+  //const edm::EDGetTokenT<reco::RecoToSimCollection> recoToSimAssociationToken_;
+  //const edm::EDGetTokenT<reco::SimToRecoCollection> simToRecoAssociationToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> t0SrcToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> Sigmat0SrcToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> t0PidToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> t0SafePidToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> sigmat0SafePidToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> trackMVAQualToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> tmtdToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> tofPiToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> tofKToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> tofPToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> probPiToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> probKToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> probPToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> sigmatofpiToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> sigmatofkToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> sigmatofpToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> btlMatchChi2Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> btlMatchTimeChi2Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> etlMatchChi2Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> etlMatchTimeChi2Token_;
+  const edm::EDGetTokenT<edm::ValueMap<int>> npixBarrelToken_;
+  const edm::EDGetTokenT<edm::ValueMap<int>> npixEndcapToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> trackOutermostHitPositionToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> trackpSrcToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> trackBetaSrcToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> trackPathLengthToken_;
+  const edm::EDGetTokenT<edm::ValueMap<GlobalPoint>> trackmtdposToken_;
+  
+  /// ------------------------
+
+  
   edm::EDGetTokenT< LumiScalersCollection >                  t_lumiScaler_;
   edm::EDGetTokenT< LumiScalersCollection >                  t_offlineLumiScaler_;
   edm::EDGetTokenT< std::vector<PileupSummaryInfo> >         t_PUSummaryInfo_;
@@ -266,6 +397,9 @@ private:
   int truePU_;
   double genEventWeight_;
   double qScale_;
+
+  double rho_ECAL;
+  double rho_HCAL;
 
   vector<float> PU_pT_hats_;
 
@@ -610,6 +744,244 @@ private:
   int iterL3Muon_isGLB_[arrSize_];
   int iterL3Muon_isSTA_[arrSize_];
   int iterL3Muon_isTRK_[arrSize_];
+
+  int nMuonCand_;
+
+  double muonCand_pt_[arrSize_];
+  double muonCand_eta_[arrSize_];
+  double muonCand_phi_[arrSize_];
+  double muonCand_px_[arrSize_];
+  double muonCand_py_[arrSize_];
+  double muonCand_pz_[arrSize_];
+  double muonCand_vx_[arrSize_];
+  double muonCand_vy_[arrSize_];
+  double muonCand_vz_[arrSize_];
+  double muonCand_dB_[arrSize_];
+  double muonCand_charge_[arrSize_];
+  int muonCand_isGLB_[arrSize_];
+  int muonCand_isSTA_[arrSize_];
+  int muonCand_isTRK_[arrSize_];
+  int muonCand_isMuon_[arrSize_];
+
+  double muonCand_inner_trkChi2_[arrSize_];
+  double muonCand_inner_validFraction_[arrSize_];
+  int    muonCand_inner_trackerLayers_[arrSize_];
+  int    muonCand_inner_trackerHits_[arrSize_];
+  int    muonCand_inner_lostTrackerHits_[arrSize_];
+  int    muonCand_inner_lostTrackerHitsIn_[arrSize_];
+  int    muonCand_inner_lostTrackerHitsOut_[arrSize_];
+  int    muonCand_inner_lostPixelHits_[arrSize_];
+  int    muonCand_inner_lostPixelBarrelHits_[arrSize_];
+  int    muonCand_inner_lostPixelEndcapHits_[arrSize_];
+  int    muonCand_inner_lostStripHits_[arrSize_];
+  int    muonCand_inner_lostStripTIBHits_[arrSize_];
+  int    muonCand_inner_lostStripTIDHits_[arrSize_];
+  int    muonCand_inner_lostStripTOBHits_[arrSize_];
+  int    muonCand_inner_lostStripTECHits_[arrSize_];
+  int    muonCand_inner_pixelLayers_[arrSize_];
+  int    muonCand_inner_pixelHits_[arrSize_];
+  int    muonCand_global_muonHits_[arrSize_];
+  double muonCand_global_trkChi2_[arrSize_];
+  int    muonCand_global_trackerLayers_[arrSize_];
+  int    muonCand_global_trackerHits_[arrSize_];
+
+  double muonCand_dxy_bs_[arrSize_];
+  double muonCand_dxyError_bs_[arrSize_];
+  double muonCand_dz_bs_[arrSize_];
+  double muonCand_dzError_[arrSize_];
+  double muonCand_IPSig_[arrSize_];
+
+  double muonCand_btlMatchChi2_[arrSize_];
+  double muonCand_etlMatchChi2_[arrSize_];
+  double muonCand_btlMatchTimeChi2_[arrSize_];
+  double muonCand_etlMatchTimeChi2_[arrSize_];
+  double muonCand_npixBarrel_[arrSize_];
+  double muonCand_npixEndcap_[arrSize_];
+  double muonCand_outermostHitPosition_[arrSize_];
+  double muonCand_p_[arrSize_];
+  double muonCand_beta_[arrSize_];
+  double muonCand_t0_[arrSize_];
+  double muonCand_sigmat0_[arrSize_];
+  double muonCand_pathLength_[arrSize_];
+  double muonCand_tmtd_[arrSize_];
+  double muonCand_sigmatmtd_[arrSize_];
+  double muonCand_tofMu_[arrSize_];
+  double muonCand_sigmaTofMu_[arrSize_];
+  double muonCand_mtdpos_x_[arrSize_];
+  double muonCand_mtdpos_y_[arrSize_];
+  double muonCand_mtdpos_z_[arrSize_];
+  
+  int nECAL_;
+
+  double ecal_et_[arrSize_];
+  double ecal_pt_[arrSize_];
+  double ecal_eta_[arrSize_];
+  double ecal_phi_[arrSize_];
+  double ecal_charge_[arrSize_];
+  double ecal_px_[arrSize_];
+  double ecal_py_[arrSize_];
+  double ecal_pz_[arrSize_];
+  double ecal_vx_[arrSize_];
+  double ecal_vy_[arrSize_];
+  double ecal_vz_[arrSize_];
+  double ecal_time_[arrSize_];
+  double ecal_timeErr_[arrSize_];
+  double ecal_depth_[arrSize_];
+  double ecal_rho_[arrSize_];
+  int ecal_muonIdx_[arrSize_];
+  int ecal_nHits_[arrSize_];
+
+  int nECALHits_;
+  
+  double ecal_hit_energy_[arrSize_];
+  double ecal_hit_depth_[arrSize_];
+  double ecal_hit_time_[arrSize_];
+  double ecal_hit_timeErr_[arrSize_];
+  double ecal_hit_pt2_[arrSize_];
+  double ecal_hit_x_[arrSize_];
+  double ecal_hit_y_[arrSize_];
+  double ecal_hit_z_[arrSize_];
+  double ecal_hit_eta_[arrSize_];
+  double ecal_hit_phi_[arrSize_];
+  double ecal_hit_fraction_[arrSize_];
+  double ecal_hit_idx_[arrSize_];
+
+  int nHCAL_;
+
+  double hcal_et_[arrSize_];
+  double hcal_pt_[arrSize_];
+  double hcal_eta_[arrSize_];
+  double hcal_phi_[arrSize_];
+  double hcal_charge_[arrSize_];
+  double hcal_px_[arrSize_];
+  double hcal_py_[arrSize_];
+  double hcal_pz_[arrSize_];
+  double hcal_vx_[arrSize_];
+  double hcal_vy_[arrSize_];
+  double hcal_vz_[arrSize_];
+  double hcal_time_[arrSize_];
+  double hcal_timeErr_[arrSize_];
+  double hcal_depth_[arrSize_];
+  double hcal_rho_[arrSize_];
+  int hcal_muonIdx_[arrSize_];
+  int hcal_nHits_[arrSize_];
+
+  int nHCALHits_;
+
+  double hcal_hit_energy_[arrSize_];
+  double hcal_hit_depth_[arrSize_];
+  double hcal_hit_time_[arrSize_];
+  double hcal_hit_timeErr_[arrSize_];
+  double hcal_hit_pt2_[arrSize_];
+  double hcal_hit_x_[arrSize_];
+  double hcal_hit_y_[arrSize_];
+  double hcal_hit_z_[arrSize_];
+  double hcal_hit_eta_[arrSize_];
+  double hcal_hit_phi_[arrSize_];
+  double hcal_hit_fraction_[arrSize_];
+  double hcal_hit_idx_[arrSize_];
+
+  int nHGCAL_em_;
+
+  double hgcal_em_et_[arrSize_];
+  double hgcal_em_pt_[arrSize_];
+  double hgcal_em_eta_[arrSize_];
+  double hgcal_em_phi_[arrSize_];
+  double hgcal_em_charge_[arrSize_];
+  double hgcal_em_px_[arrSize_];
+  double hgcal_em_py_[arrSize_];
+  double hgcal_em_pz_[arrSize_];
+  double hgcal_em_vx_[arrSize_];
+  double hgcal_em_vy_[arrSize_];
+  double hgcal_em_vz_[arrSize_];
+  double hgcal_em_time_[arrSize_];
+  double hgcal_em_timeErr_[arrSize_];
+  double hgcal_em_depth_[arrSize_];
+  double hgcal_em_algoID_[arrSize_];
+  int hgcal_em_muonIdx_[arrSize_];
+  
+  int nHGCAL_had_;
+  
+  double hgcal_had_et_[arrSize_];
+  double hgcal_had_pt_[arrSize_];
+  double hgcal_had_eta_[arrSize_];
+  double hgcal_had_phi_[arrSize_];
+  double hgcal_had_charge_[arrSize_];
+  double hgcal_had_px_[arrSize_];
+  double hgcal_had_py_[arrSize_];
+  double hgcal_had_pz_[arrSize_];
+  double hgcal_had_vx_[arrSize_];
+  double hgcal_had_vy_[arrSize_];
+  double hgcal_had_vz_[arrSize_];
+  double hgcal_had_time_[arrSize_];
+  double hgcal_had_timeErr_[arrSize_];
+  double hgcal_had_depth_[arrSize_];
+  double hgcal_had_algoID_[arrSize_];
+  int hgcal_had_muonIdx_[arrSize_];
+
+  int nTrack_;
+  
+  double track_pt_[arrSize_];
+  double track_eta_[arrSize_];
+  double track_phi_[arrSize_];
+  double track_charge_[arrSize_];
+  double track_px_[arrSize_];
+  double track_py_[arrSize_];
+  double track_pz_[arrSize_];
+  double track_vx_[arrSize_];
+  double track_vy_[arrSize_];
+  double track_vz_[arrSize_];
+  double track_dxy_bs_[arrSize_];
+  double track_dxyError_bs_[arrSize_];
+  double track_dz_bs_[arrSize_];
+  double track_dzError_[arrSize_];
+  double track_trkChi2_[arrSize_];
+  int    track_trackerLayers_[arrSize_];
+  int    track_trackerHits_[arrSize_];
+  int    track_lostTrackerHits_[arrSize_];
+  int    track_lostTrackerHitsIn_[arrSize_];
+  int    track_lostTrackerHitsOut_[arrSize_];
+  int    track_lostPixelHits_[arrSize_];
+  int    track_lostPixelBarrelHits_[arrSize_];
+  int    track_lostPixelEndcapHits_[arrSize_];
+  int    track_lostStripHits_[arrSize_];
+  int    track_lostStripTIBHits_[arrSize_];
+  int    track_lostStripTIDHits_[arrSize_];
+  int    track_lostStripTOBHits_[arrSize_];
+  int    track_lostStripTECHits_[arrSize_];
+  int    track_pixelLayers_[arrSize_];
+  int    track_pixelHits_[arrSize_];
+  int    track_muonHits_[arrSize_];
+  float  track_t0Src_[arrSize_];
+  float  track_Sigmat0Src_[arrSize_];
+  float  track_t0Pid_[arrSize_];
+  float  track_t0Safe_[arrSize_];
+  float  track_sigmat0Safe_[arrSize_];
+  float  track_mtdQualMVA_[arrSize_];
+  float  track_tMtd_[arrSize_];
+  float  track_tofPi_[arrSize_];
+  float  track_tofK_[arrSize_];
+  float  track_tofP_[arrSize_];
+  float  track_probPi_[arrSize_];
+  float  track_probK_[arrSize_];
+  float  track_probP_[arrSize_];
+  float  track_sigmatofpi_[arrSize_];
+  float  track_sigmatofk_[arrSize_];
+  float  track_sigmatofp_[arrSize_];
+  float  track_btlMatchChi2_[arrSize_];
+  float  track_btlMatchTimeChi2_[arrSize_];
+  float  track_etlMatchChi2_[arrSize_];
+  float  track_etlMatchTimeChi2_[arrSize_];
+  int    track_npixBarrel_[arrSize_];
+  int    track_npixEndcap_[arrSize_];
+  int    track_muonIdx_[arrSize_];
+  float track_outermostHitPosition_[arrSize_];
+  float track_p_[arrSize_];
+  float track_beta_[arrSize_];
+  float track_pathLength_[arrSize_];
+  float track_mtdpos_x_[arrSize_];
+  float track_mtdpos_y_[arrSize_];
+  float track_mtdpos_z_[arrSize_];
 
   class seedTemplate {
   private:

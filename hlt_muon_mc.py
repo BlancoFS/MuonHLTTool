@@ -7,6 +7,9 @@ import FWCore.ParameterSet.Config as cms
 
 from Configuration.Eras.Era_Phase2C17I13M9_cff import Phase2C17I13M9
 
+from Configuration.Eras.Modifier_phase2_etlV4_cff import phase2_etlV4
+phase2_etlV4.toModify(Phase2C17I13M9, thresholdToKeep = 0.005, calibrationConstant = 0.015 )
+
 process = cms.Process('MYHLT',Phase2C17I13M9)
 
 # import of standard configurations
@@ -24,6 +27,22 @@ process.load('L1Trigger.Configuration.Phase2GTMenus.SeedDefinitions.step1_2024.l
 process.load('HLTrigger.Configuration.HLT_75e33_cff')
 process.load('Configuration.StandardSequences.EndOfProcess_cff')
 process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff')
+###
+process.load("TrackingTools.KalmanUpdators.Chi2MeasurementEstimator_cfi")
+process.load('TrackingTools.TrackFitters.KFTrajectoryFitter_cfi')
+process.load("TrackingTools.KalmanUpdators.KFUpdatorESProducer_cfi")
+process.load('TrackingTools.GeomPropagators.SmartPropagatorAnyRK_cfi')
+process.load('TrackingTools.TrackFitters.KFTrajectorySmoother_cfi')
+process.load('RecoMTD.TrackExtender.PropagatorWithMaterialForMTD_cfi')
+process.load('RecoMTD.TransientTrackingRecHit.MTDTransientTrackingRecHitBuilder_cfi')
+#
+process.load('RecoLocalFastTime.FTLRecProducers.MTDTimeCalibESProducer_cfi')
+process.load('RecoLocalFastTime.FTLClusterizer.MTDCPEESProducer_cfi')
+#
+process.load('RecoMuon.TrackingTools.MuonServiceProxy_cff')
+process.load('RecoMuon.TrackingTools.MuonTrackLoader_cff')
+process.load('RecoMuon.TransientTrackingRecHit.MuonTransientTrackingRecHitBuilder_cfi')
+
 
 process.maxEvents = cms.untracked.PSet(
     input = cms.untracked.int32(100),
@@ -258,10 +277,15 @@ process.source.inputCommands = cms.untracked.vstring(
     'drop l1tPFCandidates_*_*_RECO'
 )
 
+
+
+from MuonHLTTool.MuonHLTNtupler.customizerForMuonHLTNtupler import *
+customizerFuncForMuonGeneralTrackerExtender(process, True, "MYHLT")
+
+
 # -- Ntuple, DQMOutput, and EDMOutput -- #
 doNtuple = True
-if doNtuple:
-    from MuonHLTTool.MuonHLTNtupler.customizerForMuonHLTNtupler import *
+if doNtuple:    
     process = customizerFuncForMuonHLTNtupler(process, "MYHLT", False)
 
     process.ntupler.offlineMuon                   = cms.untracked.InputTag("slimmedMuons")
@@ -291,6 +315,7 @@ if doNtuple:
     # mvaCuts_E = (0,)
     # process = customizerFuncForMuonHLTSeeding(process, "MYHLT", WPNAME, doSort, nSeedMax_B, nSeedMax_E, mvaCuts_B, mvaCuts_E )
     # process.hltIter2Phase2L3FromL1TkMuonPixelSeedsFiltered.L1TkMu = cms.InputTag("l1tTkMuonsGmt", "", "MYHLT")
+    
 
 #process.l1tTkMuonsGmt.applyQualityCuts = cms.bool(False)
 
@@ -318,6 +343,8 @@ if doEDMOut:
     )
     process.EDMOutput = cms.EndPath(process.writeDataset)
 # -- #
+
+process.source.skipEvents = cms.untracked.uint32( 28 )
 
 process.schedule = cms.Schedule(
     process.L1simulation_step,
@@ -375,7 +402,11 @@ process.schedule = cms.Schedule(
     process.HLT_Mu17_TrkIsoVVL_Mu8_TrkIsoVVL_DZ_FromL1TkMuon,
     process.HLT_TriMu_10_5_5_DZ_FromL1TkMuon,
     # process.HLT_IsoStudy,
+    #process.myMTDPath,
     process.HLTriggerFinalPath,
+    #process.myMTDPath,
+    #
+    # 
     # process.Gen_QCDBCToEFilter,
     # process.Gen_QCDEmEnrichingFilter,
     # process.Gen_QCDEmEnrichingNoBCToEFilter,
