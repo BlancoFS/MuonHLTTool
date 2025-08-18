@@ -296,7 +296,8 @@ private:
   const double theChi2Prob_Min;  //! ChiSquaredProbability(trk.chi2,trk.ndof) > theChi2Prob_Min
   const double thePt_Min;        //! min track pt to include into iso deposit  
   
-  const edm::EDGetTokenT<reco::TrackCollection> theTrackCollectionToken_;
+  //const edm::EDGetTokenT<reco::TrackCollection> theTrackCollectionToken_;
+  const edm::EDGetTokenT<edm::View<reco::Track>> theTrackCollectionToken_;
 
   //const edm::EDGetTokenT<reco::TrackCollection> RecMTDTrackToken_;
   //const edm::EDGetTokenT<reco::TPToSimCollectionMtd> tp2SimAssociationMapToken_;
@@ -982,7 +983,20 @@ private:
   float track_mtdpos_x_[arrSize_];
   float track_mtdpos_y_[arrSize_];
   float track_mtdpos_z_[arrSize_];
-
+  int track_TPcharge_[arrSize_];
+  int track_TPpdgId_[arrSize_];
+  float track_TPenergy_[arrSize_];
+  float track_TPpt_[arrSize_];
+  float track_TPeta_[arrSize_];
+  float track_TPphi_[arrSize_];
+  float track_TPparentVx_[arrSize_];
+  float track_TPparentVy_[arrSize_];
+  float track_TPparentVz_[arrSize_];
+  int track_TPstatus_[arrSize_];
+  int track_TPnumberOfHits_[arrSize_];
+  int track_TPnumberOfTrackerHits_[arrSize_];
+  int track_TPnumberOfTrackerLayers_[arrSize_];
+  
   class seedTemplate {
   private:
     int nSeeds_;

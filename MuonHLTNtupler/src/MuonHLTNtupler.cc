@@ -214,7 +214,8 @@ theChi2Ndof_Max  (iConfig.getParameter<double>("Chi2Ndof_Max")),
 theChi2Prob_Min  (iConfig.getParameter<double>("Chi2Prob_Min")),
 thePt_Min        (iConfig.getParameter<double>("Pt_Min")),
 
-theTrackCollectionToken_ ( consumes<TrackCollection>                       (iConfig.getUntrackedParameter<edm::InputTag>("inputTrackCollection"))   ),
+//theTrackCollectionToken_ ( consumes<TrackCollection>                       (iConfig.getUntrackedParameter<edm::InputTag>("inputTrackCollection"))   ),
+theTrackCollectionToken_ ( consumes<edm::View<reco::Track>>   (iConfig.getUntrackedParameter<edm::InputTag>("inputTrackCollection"))   ),
 
 // MTD
 
@@ -1068,6 +1069,19 @@ void MuonHLTNtupler::Init()
     track_mtdpos_x_[i] = -999;
     track_mtdpos_y_[i] = -999;
     track_mtdpos_z_[i] = -999;
+    track_TPcharge_[i] = -999;
+    track_TPpdgId_[i] = -999;
+    track_TPenergy_[i] = -999;
+    track_TPpt_[i] = -999;
+    track_TPeta_[i] = -999;
+    track_TPphi_[i] = -999;
+    track_TPparentVx_[i] = -999;
+    track_TPparentVy_[i] = -999;
+    track_TPparentVz_[i] = -999;
+    track_TPstatus_[i] = -999;
+    track_TPnumberOfHits_[i] = -999;
+    track_TPnumberOfTrackerHits_[i] = -999;
+    track_TPnumberOfTrackerLayers_[i] = -999;
   }
   
   SThltIterL3OISeedsFromL2Muons->clear();
@@ -1606,7 +1620,20 @@ void MuonHLTNtupler::Make_Branch()
   ntuple_->Branch("track_mtdpos_x", &track_mtdpos_x_, "track_mtdpos_x[nTrack]/D");
   ntuple_->Branch("track_mtdpos_y", &track_mtdpos_y_, "track_mtdpos_y[nTrack]/D");
   ntuple_->Branch("track_mtdpos_z", &track_mtdpos_z_, "track_mtdpos_z[nTrack]/D");
-
+  ntuple_->Branch("track_TPcharge", &track_TPcharge_, "track_TPcharge[nTrack]/I");
+  ntuple_->Branch("track_TPpdgId", &track_TPpdgId_, "track_TPpdgId[nTrack]/I");
+  ntuple_->Branch("track_TPenergy", &track_TPenergy_, "track_TPenergy[nTrack]/D");
+  ntuple_->Branch("track_TPpt", &track_TPpt_, "track_TPpt[nTrack]/D");
+  ntuple_->Branch("track_TPeta", &track_TPeta_, "track_TPeta[nTrack]/D");
+  ntuple_->Branch("track_TPphi", &track_TPphi_, "track_TPphi[nTrack]/D");
+  ntuple_->Branch("track_TPparentVx", &track_TPparentVx_, "track_TPparentVx[nTrack]/D");
+  ntuple_->Branch("track_TPparentVy", &track_TPparentVy_, "track_TPparentVy[nTrack]/D");
+  ntuple_->Branch("track_TPparentVz", &track_TPparentVz_, "track_TPparentVz[nTrack]/D");
+  ntuple_->Branch("track_TPstatus", &track_TPstatus_, "track_TPstatus[nTrack]/I");
+  ntuple_->Branch("track_TPnumberOfHits", &track_TPnumberOfHits_, "track_TPnumberOfHits[nTrack]/I");
+  ntuple_->Branch("track_TPnumberOfTrackerHits", &track_TPnumberOfTrackerHits_, "track_TPnumberOfTrackerHits[nTrack]/I");
+  ntuple_->Branch("track_TPnumberOfTrackerLayers", &track_TPnumberOfTrackerLayers_, "track_TPnumberOfTrackerLayers[nTrack]/I");
+  
   /// End of isolation information
  
   SThltIterL3OISeedsFromL2Muons->setBranch(ntuple_,"hltIterL3OISeedsFromL2Muons");
@@ -2259,40 +2286,39 @@ void MuonHLTNtupler::Fill_GenParticle(const edm::Event &iEvent)
   {
     const reco::GenParticle &parCand = (*h_genParticle)[i];
 
-    if( abs(parCand.pdgId()) == 13 || parCand.isHardProcess() ) // -- only muons -- //
-    {
-      genParticle_ID_[_nGenParticle]     = parCand.pdgId();
-      genParticle_status_[_nGenParticle] = parCand.status();
-      // genParticle_mother_[_nGenParticle] = parCand.mother(0)->pdgId();
-
-      genParticle_pt_[_nGenParticle]  = parCand.pt();
-      genParticle_eta_[_nGenParticle] = parCand.eta();
-      genParticle_phi_[_nGenParticle] = parCand.phi();
-      genParticle_px_[_nGenParticle]  = parCand.px();
-      genParticle_py_[_nGenParticle]  = parCand.py();
-      genParticle_pz_[_nGenParticle]  = parCand.pz();
-      genParticle_energy_[_nGenParticle] = parCand.energy();
-      genParticle_charge_[_nGenParticle] = parCand.charge();
-
-      if( parCand.statusFlags().isPrompt() )                genParticle_isPrompt_[_nGenParticle] = 1;
-      if( parCand.statusFlags().isTauDecayProduct() )       genParticle_isTauDecayProduct_[_nGenParticle] = 1;
-      if( parCand.statusFlags().isPromptTauDecayProduct() ) genParticle_isPromptTauDecayProduct_[_nGenParticle] = 1;
-      if( parCand.statusFlags().isDecayedLeptonHadron() )   genParticle_isDecayedLeptonHadron_[_nGenParticle] = 1;
-
-      if( parCand.isPromptFinalState() ) genParticle_isPromptFinalState_[_nGenParticle] = 1;
-      if( parCand.isDirectPromptTauDecayProductFinalState() ) genParticle_isDirectPromptTauDecayProductFinalState_[_nGenParticle] = 1;
-      if( parCand.isHardProcess() ) genParticle_isHardProcess_[_nGenParticle] = 1;
-      if( parCand.isLastCopy() ) genParticle_isLastCopy_[_nGenParticle] = 1;
-      if( parCand.isLastCopyBeforeFSR() ) genParticle_isLastCopyBeforeFSR_[_nGenParticle] = 1;
-
-      if( parCand.isPromptDecayed() )           genParticle_isPromptDecayed_[_nGenParticle] = 1;
-      if( parCand.fromHardProcessBeforeFSR() )  genParticle_fromHardProcessBeforeFSR_[_nGenParticle] = 1;
-      if( parCand.fromHardProcessDecayed() )    genParticle_fromHardProcessDecayed_[_nGenParticle] = 1;
-      if( parCand.fromHardProcessFinalState() ) genParticle_fromHardProcessFinalState_[_nGenParticle] = 1;
-      // if( parCand.isMostlyLikePythia6Status3() ) this->genParticle_isMostlyLikePythia6Status3[_nGenParticle] = 1;
-
-      _nGenParticle++;
-    }
+    //if( abs(parCand.pdgId()) == 13 || parCand.isHardProcess() ) // -- only muons -- //
+    //{
+    genParticle_ID_[_nGenParticle]     = parCand.pdgId();
+    genParticle_status_[_nGenParticle] = parCand.status();
+    // genParticle_mother_[_nGenParticle] = parCand.mother(0)->pdgId();
+    
+    genParticle_pt_[_nGenParticle]  = parCand.pt();
+    genParticle_eta_[_nGenParticle] = parCand.eta();
+    genParticle_phi_[_nGenParticle] = parCand.phi();
+    genParticle_px_[_nGenParticle]  = parCand.px();
+    genParticle_py_[_nGenParticle]  = parCand.py();
+    genParticle_pz_[_nGenParticle]  = parCand.pz();
+    genParticle_energy_[_nGenParticle] = parCand.energy();
+    genParticle_charge_[_nGenParticle] = parCand.charge();
+    
+    if( parCand.statusFlags().isPrompt() )                genParticle_isPrompt_[_nGenParticle] = 1;
+    if( parCand.statusFlags().isTauDecayProduct() )       genParticle_isTauDecayProduct_[_nGenParticle] = 1;
+    if( parCand.statusFlags().isPromptTauDecayProduct() ) genParticle_isPromptTauDecayProduct_[_nGenParticle] = 1;
+    if( parCand.statusFlags().isDecayedLeptonHadron() )   genParticle_isDecayedLeptonHadron_[_nGenParticle] = 1;
+    
+    if( parCand.isPromptFinalState() ) genParticle_isPromptFinalState_[_nGenParticle] = 1;
+    if( parCand.isDirectPromptTauDecayProductFinalState() ) genParticle_isDirectPromptTauDecayProductFinalState_[_nGenParticle] = 1;
+    if( parCand.isHardProcess() ) genParticle_isHardProcess_[_nGenParticle] = 1;
+    if( parCand.isLastCopy() ) genParticle_isLastCopy_[_nGenParticle] = 1;
+    if( parCand.isLastCopyBeforeFSR() ) genParticle_isLastCopyBeforeFSR_[_nGenParticle] = 1;
+    
+    if( parCand.isPromptDecayed() )           genParticle_isPromptDecayed_[_nGenParticle] = 1;
+    if( parCand.fromHardProcessBeforeFSR() )  genParticle_fromHardProcessBeforeFSR_[_nGenParticle] = 1;
+    if( parCand.fromHardProcessDecayed() )    genParticle_fromHardProcessDecayed_[_nGenParticle] = 1;
+    if( parCand.fromHardProcessFinalState() ) genParticle_fromHardProcessFinalState_[_nGenParticle] = 1;
+    // if( parCand.isMostlyLikePythia6Status3() ) this->genParticle_isMostlyLikePythia6Status3[_nGenParticle] = 1;
+    
+    _nGenParticle++;    
   }
   nGenParticle_ = _nGenParticle;
 }
@@ -3286,11 +3312,22 @@ void MuonHLTNtupler::Fill_Track(const edm::Event &iEvent, const edm::EventSetup 
   edm::Handle<trigger::TriggerFilterObjectWithRefs> PrevFilterOutput;
   if ( iEvent.getByToken(theMuonFilteredCollectionToken_, PrevFilterOutput) ){
 
-    Handle<TrackCollection> tracksH;
+    //Handle<TrackCollection> tracksH;
+    edm::Handle<edm::View<reco::Track>> tracksH;
     if ( iEvent.getByToken(theTrackCollectionToken_, tracksH) ){
 
-      const TrackCollection tracks = *(tracksH.product());
+      //const TrackCollection tracks = *(tracksH.product());
       //const auto& trackAssoc = iEvent.get(trackAssocToken_);
+
+      
+      /// Tracking Particle Match --------------------------------------------------
+      edm::Handle<reco::TrackToTrackingParticleAssociator> theAssociator;
+      iEvent.getByToken(associatorToken, theAssociator);
+      edm::Handle<TrackingParticleCollection> TPCollection;
+      iEvent.getByToken(trackingParticleToken, TPCollection);
+
+      auto recSimColl = theAssociator->associateRecoToSim(tracksH,TPCollection);
+      // ------------------------------------------------------------------------
       
       const auto& t0Src = iEvent.get(t0SrcToken_);
       const auto& Sigmat0Src = iEvent.get(Sigmat0SrcToken_);
@@ -3325,7 +3362,7 @@ void MuonHLTNtupler::Fill_Track(const edm::Event &iEvent, const edm::EventSetup 
 	
       Handle<RecoChargedCandidateCollection> mucands;
       iEvent.getByToken(theMuonCollectionToken_, mucands);
-
+      
       int _nTrack = 0;
       unsigned int nMuons = mucands->size();
       for (unsigned int iMu = 0; iMu < nMuons; iMu++){
@@ -3343,14 +3380,19 @@ void MuonHLTNtupler::Fill_Track(const edm::Event &iEvent, const edm::EventSetup 
 	muonisolation::Range<float> zRange(vtx_z - theDiff_z, vtx_z + theDiff_z);
 	muonisolation::Range<float> rRange(0, theDiff_r);
 
-	unsigned int index = 0;
-	for (auto const& tk : tracks) {
-
+	//unsigned int index = -1;
+	//for (auto const& tkH : tracksH) {
+	for (size_t index = 0; index < tracksH->size(); index++){
+	  //index++;
+	  
 	  /// Initialize MTD information, taken from RecoMTD/TimingIDTools/plugins/MVATrainingNtuple.cc#L612
 	  bool hasMTDInfo = false;
-	  const reco::TrackRef trackref(iEvent.getHandle(theTrackCollectionToken_), index);
-	  index++;
-
+	  
+	  edm::RefToBase<reco::Track> trackRef = tracksH->refAt(index);
+	  const reco::Track& tk = (*trackRef);
+	  const reco::TrackRef trackref = trackRef.castTo<reco::TrackRef>();
+	  //const reco::TrackRef trackref(iEvent.getHandle(theTrackCollectionToken_), index);
+	  
 	  if (trackPathLength[trackref] == -1) {
 	    //if (trackAssoc[trackref] == -1) {
 	    std::cout << "TrackExtenderWithMTD: track not associated" << std::endl;
@@ -3391,8 +3433,6 @@ void MuonHLTNtupler::Fill_Track(const edm::Event &iEvent, const edm::EventSetup 
 	    if (tChi2Prob < theChi2Prob_Min)
 	      continue;
 	  }
-	  
-	  ////---------
 
 	  track_pt_[_nTrack] = tk.pt();
 	  track_eta_[_nTrack] = tk.eta();
@@ -3404,9 +3444,9 @@ void MuonHLTNtupler::Fill_Track(const edm::Event &iEvent, const edm::EventSetup 
 	  track_vx_[_nTrack] = tk.vx();
 	  track_vy_[_nTrack] = tk.vy();
 	  track_vz_[_nTrack] = tk.vz();
-	  //track_dxy_bs_[_nTrack] = tk.dxy(bs->position());
-	  //track_dxyError_bs_[_nTrack] = tk.dxyError(*bs);
-	  //track_dz_bs_[_nTrack] = tk.dz(bs->position());
+	  //track_dxy_bs_[_nTrack] = tk->dxy(bs->position());
+	  //track_dxyError_bs_[_nTrack] = tk->dxyError(*bs);
+	  //track_dz_bs_[_nTrack] = tk->dz(bs->position());
 	  track_dzError_[_nTrack] = tk.dzError();
 	  track_trkChi2_[_nTrack] = tk.normalizedChi2();
 	  track_trackerLayers_[_nTrack] = tk.hitPattern().trackerLayersWithMeasurement();
@@ -3455,6 +3495,23 @@ void MuonHLTNtupler::Fill_Track(const edm::Event &iEvent, const edm::EventSetup 
 	    track_mtdpos_x_[_nTrack] = trackmtdpos[trackref].x();
 	    track_mtdpos_y_[_nTrack] = trackmtdpos[trackref].y();
 	    track_mtdpos_z_[_nTrack] = trackmtdpos[trackref].z();
+          }
+	  auto TPfound = recSimColl.find(trackRef);
+          if (TPfound != recSimColl.end()) {
+	    const auto& TPmatch = TPfound->val;
+	    track_TPcharge_[_nTrack]                = TPmatch[0].first->charge();
+	    track_TPpdgId_[_nTrack]                 = TPmatch[0].first->pdgId();
+	    track_TPenergy_[_nTrack]                = TPmatch[0].first->energy();
+	    track_TPpt_[_nTrack]                    = TPmatch[0].first->pt();
+	    track_TPeta_[_nTrack]                   = TPmatch[0].first->eta();
+	    track_TPphi_[_nTrack]                   = TPmatch[0].first->phi();
+	    track_TPparentVx_[_nTrack]              = TPmatch[0].first->vx();
+	    track_TPparentVy_[_nTrack]              = TPmatch[0].first->vy();
+	    track_TPparentVz_[_nTrack]              = TPmatch[0].first->vz();
+	    track_TPstatus_[_nTrack]                = TPmatch[0].first->status();
+	    track_TPnumberOfHits_[_nTrack]          = TPmatch[0].first->numberOfHits();
+	    track_TPnumberOfTrackerHits_[_nTrack]   = TPmatch[0].first->numberOfTrackerHits();
+	    track_TPnumberOfTrackerLayers_[_nTrack] = TPmatch[0].first->numberOfTrackerLayers();
           }
 	  _nTrack++;
 	}

@@ -344,8 +344,6 @@ if doEDMOut:
     process.EDMOutput = cms.EndPath(process.writeDataset)
 # -- #
 
-process.source.skipEvents = cms.untracked.uint32( 28 )
-
 process.schedule = cms.Schedule(
     process.L1simulation_step,
     process.L1TrackTrigger_step,
