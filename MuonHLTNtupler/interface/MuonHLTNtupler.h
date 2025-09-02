@@ -10,8 +10,10 @@
 #include "FWCore/Framework/interface/ConsumesCollector.h"
 #include "FWCore/Framework/interface/ESHandle.h"
 #include "FWCore/Framework/interface/EventSetup.h"
+#include "FWCore/Utilities/interface/ESGetToken.h"
+#include "FWCore/Utilities/interface/ESInputTag.h"
 
-#include "DataFormats/BeamSpot/interface/BeamSpot.h"
+
 #include "DataFormats/Common/interface/Handle.h"
 #include "DataFormats/Common/interface/Ref.h"
 #include "DataFormats/Common/interface/View.h"
@@ -34,14 +36,15 @@
 #include "DataFormats/VertexReco/interface/Vertex.h"
 #include "DataFormats/VertexReco/interface/VertexFwd.h"
 #include "DataFormats/Scalers/interface/LumiScalers.h"
-// #include "DataFormats/L1TrackTrigger/interface/TTTypes.h"
-// #include "DataFormats/L1TrackTrigger/interface/TTCluster.h"
-// #include "DataFormats/L1TrackTrigger/interface/TTStub.h"
-// #include "DataFormats/L1TrackTrigger/interface/TTTrack.h"
+#include "DataFormats/L1TrackTrigger/interface/TTTypes.h"
+#include "DataFormats/L1TrackTrigger/interface/TTCluster.h"
+#include "DataFormats/L1TrackTrigger/interface/TTStub.h"
+#include "DataFormats/L1TrackTrigger/interface/TTTrack.h"
 
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 #include "HLTrigger/HLTcore/interface/HLTConfigProvider.h"
 #include "HLTrigger/HLTcore/interface/HLTEventAnalyzerAOD.h"
+#include "DataFormats/HLTReco/interface/TriggerFilterObjectWithRefs.h" // New    
 #include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h"
 
 #include "SimDataFormats/GeneratorProducts/interface/GenEventInfoProduct.h"
@@ -65,6 +68,18 @@
 
 #include "Geometry/Records/interface/TrackerDigiGeometryRecord.h"
 #include "Geometry/TrackerGeometryBuilder/interface/TrackerGeometry.h"
+
+#include "RecoMuon/TrackerSeedGenerator/interface/SeedMvaEstimator.h"
+#include "MuonAnalysis/MuonAssociators/interface/PropagateToMuonSetup.h"
+
+#include "PhysicsTools/IsolationAlgos/interface/IsoDepositExtractor.h"
+#include "PhysicsTools/IsolationAlgos/interface/IsoDepositExtractorFactory.h"
+#include "DataFormats/RecoCandidate/interface/RecoEcalCandidate.h"
+#include "DataFormats/RecoCandidate/interface/RecoEcalCandidateIsolation.h"
+
+#include "DataFormats/ParticleFlowReco/interface/PFCluster.h"
+#include "DataFormats/ParticleFlowReco/interface/PFClusterFwd.h"
+
 ////////////////////////////
 // DETECTOR GEOMETRY HEADERS
 #include "MagneticField/Engine/interface/MagneticField.h"
@@ -75,26 +90,43 @@
 #include "Geometry/CommonDetUnit/interface/GeomDetType.h"
 #include "Geometry/CommonDetUnit/interface/GeomDet.h"
 
-// #include "Geometry/CommonTopologies/interface/PixelGeomDetUnit.h"
-// #include "Geometry/CommonTopologies/interface/PixelGeomDetType.h"
+#include "Geometry/CommonTopologies/interface/PixelGeomDetUnit.h"
+#include "Geometry/CommonTopologies/interface/PixelGeomDetType.h"
 #include "Geometry/TrackerGeometryBuilder/interface/PixelTopologyBuilder.h"
 #include "Geometry/Records/interface/StackedTrackerGeometryRecord.h"
 
+#include "SimDataFormats/Associations/interface/TrackToTrackingParticleAssociator.h"
+#include "SimDataFormats/Associations/interface/MtdSimLayerClusterToTPAssociatorBaseImpl.h"
+#include "SimDataFormats/Associations/interface/MtdRecoClusterToSimLayerClusterAssociationMap.h"
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingParticle.h"
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingVertex.h"
 #include "SimDataFormats/TrackingHit/interface/PSimHitContainer.h"
 #include "SimDataFormats/TrackingHit/interface/PSimHit.h"
-// #include "SimTracker/TrackTriggerAssociation/interface/TTClusterAssociationMap.h"
-// #include "SimTracker/TrackTriggerAssociation/interface/TTStubAssociationMap.h"
-// #include "SimTracker/TrackTriggerAssociation/interface/TTTrackAssociationMap.h"
-// #include "DataFormats/L1TCorrelator/interface/TkMuon.h"
-// #include "DataFormats/L1TCorrelator/interface/TkMuonFwd.h"
-// #include "DataFormats/L1TCorrelator/interface/TkPrimaryVertex.h"
+#include "SimDataFormats/Associations/interface/TTClusterAssociationMap.h"
+#include "SimDataFormats/Associations/interface/TTStubAssociationMap.h"
+#include "SimDataFormats/Associations/interface/TTTrackAssociationMap.h"
+#include "DataFormats/L1TCorrelator/interface/TkMuon.h"
+#include "DataFormats/L1TCorrelator/interface/TkMuonFwd.h"
+#include "DataFormats/L1Trigger/interface/VertexWord.h"
+#include "DataFormats/L1TMuonPhase2/interface/TrackerMuon.h"
 
-#include "RecoMuon/TrackerSeedGenerator/interface/SeedMvaEstimator.h"
-#include "MuonAnalysis/MuonAssociators/interface/PropagateToMuonSetup.h"
+#include "L1Trigger/L1TMuon/interface/MicroGMTConfiguration.h"
+#include "DataFormats/Math/interface/angle_units.h"
 
-// #include "MuonHLTTool/MuonHLTNtupler/interface/MuonHLTobjCorrelator.h"
+#include "RecoMuon/TrackerSeedGenerator/interface/SeedMvaEstimatorPhase2.h"
+
+// -- for L1TkMu propagation
+#include "TrackingTools/GeomPropagators/interface/Propagator.h"
+#include "TrackingTools/Records/interface/TrackingComponentsRecord.h"
+#include "TrackingTools/TrajectoryState/interface/FreeTrajectoryState.h"
+#include "RecoTracker/TkDetLayers/interface/GeometricSearchTracker.h"
+#include "RecoTracker/TkDetLayers/interface/GeometricSearchTrackerBuilder.h"
+#include "Geometry/TrackerNumberingBuilder/interface/GeometricDet.h"
+#include "Geometry/Records/interface/IdealGeometryRecord.h"
+#include "DataFormats/TrackerCommon/interface/TrackerTopology.h"
+#include "Geometry/Records/interface/TrackerTopologyRcd.h"
+
+#include "MuonHLTTool/MuonHLTNtupler/interface/MuonHLTobjCorrelator.h"
 
 #include "TTree.h"
 #include "TString.h"
@@ -106,30 +138,35 @@ using namespace edm;
 class MuonHLTNtupler : public edm::one::EDAnalyzer<>
 {
 public:
-  explicit MuonHLTNtupler(const edm::ParameterSet &iConfig);
+  MuonHLTNtupler(const edm::ParameterSet &iConfig);
   virtual ~MuonHLTNtupler() {};
 
   virtual void analyze(const edm::Event &iEvent, const edm::EventSetup &iSetup);
   virtual void beginJob();
   virtual void endJob();
-
-  // virtual void beginRun(const edm::Run &iRun, const edm::EventSetup &iSetup);
-  // virtual void endRun(const edm::Run &iRun, const edm::EventSetup &iSetup);
+  virtual void beginRun(const edm::Run &iRun, const edm::EventSetup &iSetup);
+  virtual void endRun(const edm::Run &iRun, const edm::EventSetup &iSetup);
 
 private:
   void Init();
   void Make_Branch();
-  // void Fill_L1Track(const edm::Event &iEvent, const edm::EventSetup &iSetup);
+  void Fill_L1Track(const edm::Event &iEvent, const edm::EventSetup &iSetup);
   void Fill_HLT(const edm::Event &iEvent, bool isMYHLT);
-  void Fill_Muon(const edm::Event &iEvent, const edm::EventSetup &iSetup);
+  void Fill_Muon(const edm::Event &iEvent);
+  void Fill_Muon2(const edm::Event &iEvent);
   void Fill_HLTMuon(const edm::Event &iEvent);
   void Fill_L1Muon(const edm::Event &iEvent);
   void Fill_GenParticle(const edm::Event &iEvent);
-
+  void Fill_PFCand(const edm::Event &iEvent, const edm::EventSetup &iSetup);
+  
+  bool computedRVeto(RecoChargedCandidateRef candRef, reco::PFClusterRef pfclu, double drMAX, double drVeto2_);
+  
   //For Rerun (Fill_IterL3*)
   void Fill_IterL3(const edm::Event &iEvent, const edm::EventSetup &iSetup);
   void Fill_Seed(const edm::Event &iEvent, const edm::EventSetup &iSetup);
 
+  bool triggerdByPreviousLevel(const reco::RecoChargedCandidateRef& candref, const std::vector<reco::RecoChargedCandidateRef>& vcands);
+  
   bool SavedTriggerCondition( std::string& pathName );
   bool SavedFilterCondition( std::string& filterName );
 
@@ -138,24 +175,24 @@ private:
   bool doMVA;
   bool doSeed;
   bool DebugMode;
-  // bool SaveAllTracks;   // store in ntuples not only truth-matched tracks but ALL tracks
-  // bool SaveStubs;       // option to save also stubs in the ntuples (makes them large...)
+  bool SaveAllTracks;   // store in ntuples not only truth-matched tracks but ALL tracks
+  bool SaveStubs;       // option to save also stubs in the ntuples (makes them large...)
 
-  const PropagateToMuonSetup propSetup_;
-  const edm::ESGetToken<TrackerGeometry, TrackerDigiGeometryRecord> trackerGeometryToken_;
-
-  // edm::EDGetTokenT< std::vector< TTTrack< Ref_Phase2TrackerDigi_ > > > ttTrackToken_;
+  edm::EDGetTokenT< std::vector< TTTrack< Ref_Phase2TrackerDigi_ > > > ttTrackToken_;
   // edm::EDGetTokenT< TTTrackAssociationMap< Ref_Phase2TrackerDigi_ > > ttTrackMCTruthToken_;
-  // edm::EDGetTokenT< edmNew::DetSetVector< TTStub< Ref_Phase2TrackerDigi_ > > > ttStubToken_;
-  // edm::EDGetTokenT<l1t::TkMuonCollection> TkMuonToken_;
-  // edm::EDGetTokenT<l1t::TkPrimaryVertexCollection> l1TkPrimaryVertexToken_;
+  edm::EDGetTokenT< edmNew::DetSetVector< TTStub< Ref_Phase2TrackerDigi_ > > > ttStubToken_;
+  edm::EDGetTokenT<l1t::TrackerMuonCollection> TkMuonToken_;
+  edm::EDGetTokenT<l1t::VertexWordCollection> l1PrimaryVertexToken_;
 
   // TrackerHitAssociator::Config trackerHitAssociatorConfig_;
   edm::EDGetTokenT<reco::TrackToTrackingParticleAssociator> associatorToken;
   edm::EDGetTokenT<TrackingParticleCollection> trackingParticleToken;
 
-  edm::EDGetTokenT< reco::BeamSpot >                         t_beamSpot_;
-  edm::EDGetTokenT< std::vector<reco::Muon> >                t_offlineMuon_;
+  //const PropagateToMuonSetup propSetup_;
+  //const edm::EDGetTokenT< reco::BeamSpot >                         t_beamSpot_;
+  
+  // edm::EDGetTokenT< std::vector<reco::Muon> >                t_offlineMuon_;
+  edm::EDGetTokenT< edm::View<reco::Muon> >                  t_offlineMuon_;
   edm::EDGetTokenT< reco::VertexCollection >                 t_offlineVertex_;
   edm::EDGetTokenT< edm::TriggerResults >                    t_triggerResults_;
   edm::EDGetTokenT< trigger::TriggerEvent >                  t_triggerEvent_;
@@ -163,11 +200,6 @@ private:
   edm::EDGetTokenT< trigger::TriggerEvent >                  t_myTriggerEvent_;
 
   edm::EDGetTokenT< reco::RecoChargedCandidateCollection >   t_L3Muon_;
-  edm::EDGetTokenT< double >                                 t_rho_ECAL_;
-  edm::EDGetTokenT< double >                                 t_rho_HCAL_;
-  edm::EDGetTokenT< reco::RecoChargedCandidateIsolationMap > t_ECALIsoMap_;
-  edm::EDGetTokenT< reco::RecoChargedCandidateIsolationMap > t_HCALIsoMap_;
-  edm::EDGetTokenT< reco::IsoDepositMap >                    t_trkIsoMap_;
   edm::EDGetTokenT< reco::RecoChargedCandidateCollection >   t_L2Muon_;
   edm::EDGetTokenT< l1t::MuonBxCollection >                  t_L1Muon_;
   edm::EDGetTokenT< reco::RecoChargedCandidateCollection >   t_TkMuon_;
@@ -182,11 +214,68 @@ private:
   edm::EDGetTokenT< reco::VertexCollection >                 t_hltIterL3MuonTrimmedPixelVertices_;
   edm::EDGetTokenT< reco::VertexCollection >                 t_hltIterL3FromL1MuonTrimmedPixelVertices_;
 
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIterL3OISeedsFromL2Muons_;
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIter0IterL3MuonPixelSeedsFromPixelTracks_;
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIter2IterL3MuonPixelSeeds_;
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIter3IterL3MuonPixelSeeds_;
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_;
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIter2IterL3FromL1MuonPixelSeeds_;
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIter3IterL3FromL1MuonPixelSeeds_;
+
+  edm::EDGetTokenT< edm::View<reco::Track> >               t_hltIterL3OIMuonTrack_;
+  edm::EDGetTokenT< edm::View<reco::Track> >               t_hltIter0IterL3MuonTrack_;
+  edm::EDGetTokenT< edm::View<reco::Track> >               t_hltIter2IterL3MuonTrack_;
+  edm::EDGetTokenT< edm::View<reco::Track> >               t_hltIter3IterL3MuonTrack_;
+  edm::EDGetTokenT< edm::View<reco::Track> >               t_hltIter0IterL3FromL1MuonTrack_;
+  edm::EDGetTokenT< edm::View<reco::Track> >               t_hltIter2IterL3FromL1MuonTrack_;
+  edm::EDGetTokenT< edm::View<reco::Track> >               t_hltIter3IterL3FromL1MuonTrack_;
+
+
+  const edm::EDGetTokenT<reco::RecoChargedCandidateCollection> theMuonCollectionToken_;
+  const edm::EDGetTokenT<trigger::TriggerFilterObjectWithRefs> theMuonFilteredCollectionToken_;
+  const edm::EDGetTokenT<edm::ValueMap<int>> muonAssocToken_;
+  
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonbtlMatchChi2Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonetlMatchChi2Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonbtlMatchTimeChi2Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonetlMatchTimeChi2Token_;
+  const edm::EDGetTokenT<edm::ValueMap<int>>   muonnpixBarrelToken_;
+  const edm::EDGetTokenT<edm::ValueMap<int>>   muonnpixEndcapToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackOutermostHitPositionToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackpToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackBetaToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackt0Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTracksigmat0Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackPathLengthToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTracktmtdToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTracksigmatmtdToken_;
+  const edm::EDGetTokenT<edm::ValueMap<GlobalPoint>> muonTrackmtdposToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackTofMuToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackSigmaTofMuToken_;  
+
+  const edm::EDGetTokenT<reco::PFCandidateCollection> pfCandidateProducer_;
+  const double drMaxPf_;
+  const double drVetoPf_;
+  const double drVetoPfCh_;
+  const double minEnergyPf_;
+
+  
+  /// ------------------------
+
+  
   edm::EDGetTokenT< LumiScalersCollection >                  t_lumiScaler_;
   edm::EDGetTokenT< LumiScalersCollection >                  t_offlineLumiScaler_;
   edm::EDGetTokenT< std::vector<PileupSummaryInfo> >         t_PUSummaryInfo_;
   edm::EDGetTokenT< GenEventInfoProduct >                    t_genEventInfo_;
-  edm::EDGetTokenT< edm::View<reco::GenParticle> >           t_genParticle_;
+  edm::EDGetTokenT< reco::GenParticleCollection >            t_genParticle_;
+
+  // ------ For CMSSW_12 -------
+  const edm::ESGetToken<TrackerTopology, TrackerTopologyRcd> trackerTopologyESToken_;
+  const edm::ESGetToken<TrackerGeometry, TrackerDigiGeometryRecord> trackerGeometryESToken_;
+  const edm::ESGetToken<MagneticField, IdealMagneticFieldRecord> magFieldESToken_;
+  const edm::ESGetToken<GeometricDet, IdealGeometryRecord> geomDetESToken_;
+  const edm::ESGetToken<Propagator, TrackingComponentsRecord> propagatorESToken_;
+  // ---------------------------
 
   std::vector<std::string>   trackCollectionNames_;
   std::vector<edm::InputTag> trackCollectionLabels_;
@@ -195,23 +284,22 @@ private:
   std::vector<edm::EDGetTokenT<reco::SimToRecoCollection> > simToRecoCollectionTokens_;
   std::vector<edm::EDGetTokenT<reco::RecoToSimCollection> > recoToSimCollectionTokens_;
 
-  edm::EDGetTokenT<pat::TriggerObjectStandAloneMatch>      t_recol1Matches_;
-  edm::EDGetTokenT<edm::ValueMap<int>>                     t_recol1MatchesQuality_;
-  edm::EDGetTokenT<edm::ValueMap<float>>                   t_recol1MatchesDeltaR_;
-  edm::EDGetTokenT<pat::TriggerObjectStandAloneMatch>      t_recol1MatchesByQ_;
-  edm::EDGetTokenT<edm::ValueMap<int>>                     t_recol1MatchesByQQuality_;
-  edm::EDGetTokenT<edm::ValueMap<float>>                   t_recol1MatchesByQDeltaR_;
-  edm::EDGetTokenT<pat::TriggerObjectStandAloneMatch>      t_genl1Matches_;
-  edm::EDGetTokenT<edm::ValueMap<int>>                     t_genl1MatchesQuality_;
-  edm::EDGetTokenT<edm::ValueMap<float>>                   t_genl1MatchesDeltaR_;
-  edm::EDGetTokenT<pat::TriggerObjectStandAloneMatch>      t_genl1MatchesByQ_;
-  edm::EDGetTokenT<edm::ValueMap<int>>                     t_genl1MatchesByQQuality_;
-  edm::EDGetTokenT<edm::ValueMap<float>>                   t_genl1MatchesByQDeltaR_;
+  std::vector<std::string> trkIsoTags_;
+  std::vector<edm::InputTag> trkIsoLabels_;
+  std::vector<edm::EDGetTokenT<reco::IsoDepositMap>> trkIsoTokens_;
+  std::vector<std::string> pfIsoTags_;
+  std::vector<edm::InputTag> pfIsoLabels_;
+  std::vector<edm::EDGetTokenT<reco::RecoChargedCandidateIsolationMap>> pfIsoTokens_;
 
-  // typedef std::vector< std::pair<SeedMvaEstimator*, SeedMvaEstimator*> > pairSeedMvaEstimator;
-  typedef std::vector< std::pair<std::unique_ptr<const SeedMvaEstimator>, std::unique_ptr<const SeedMvaEstimator>>> pairSeedMvaEstimator;
-
-  const reco::BeamSpot* bs;
+  // typedef std::vector< std::pair<SeedMvaEstimatorPhase2*, SeedMvaEstimatorPhase2*> > pairSeedMvaEstimatorPhase2;
+  typedef std::pair<std::unique_ptr<const SeedMvaEstimatorPhase2>, std::unique_ptr<const SeedMvaEstimatorPhase2>> pairSeedMvaEstimatorPhase2;
+  
+  // ----------- For CMSSW_12 -----------
+  const TrackerTopology* _trackerTopology;
+  const TrackerGeometry* _trackerGeometry;
+  // const GeometricDet* _geometryDetector;
+  // const MagneticField* _magneticField;
+  // --------------------------------------
 
   TTree *ntuple_;
   static const int arrSize_ = 5000;
@@ -221,19 +309,6 @@ private:
   int runNum_;
   int lumiBlockNum_;
   unsigned long long eventNum_;
-
-  double bs_x0_;
-  double bs_y0_;
-  double bs_z0_;
-  double bs_sigmaZ_;
-  double bs_dxdz_;
-  double bs_dydz_;
-  double bs_x0Error_;
-  double bs_y0Error_;
-  double bs_z0Error_;
-  double bs_sigmaZ0Error_;
-  double bs_dxdzError_;
-  double bs_dydzError_;
 
   int nVertex_;
 
@@ -248,9 +323,12 @@ private:
   double offlineBunchLumi_;
   int truePU_;
   double genEventWeight_;
+  double qScale_;
 
-  double rho_ECAL_;
-  double rho_HCAL_;
+  double rho_ECAL;
+  double rho_HCAL;
+
+  vector<float> PU_pT_hats_;
 
   // -- generator level particles (only MC)
   int nGenParticle_;
@@ -282,27 +360,6 @@ private:
   int genParticle_fromHardProcessFinalState_[arrSize_];
   int genParticle_isMostlyLikePythia6Status3_[arrSize_];
 
-  double genParticle_l1pt_[arrSize_];
-  double genParticle_l1eta_[arrSize_];
-  double genParticle_l1phi_[arrSize_];
-  double genParticle_l1charge_[arrSize_];
-  int    genParticle_l1q_[arrSize_];
-  double genParticle_l1dr_[arrSize_];
-  double genParticle_l1ptByQ_[arrSize_];
-  double genParticle_l1etaByQ_[arrSize_];
-  double genParticle_l1phiByQ_[arrSize_];
-  double genParticle_l1chargeByQ_[arrSize_];
-  int    genParticle_l1qByQ_[arrSize_];
-  double genParticle_l1drByQ_[arrSize_];
-
-  int genParticle_nl1t_[arrSize_];
-  vector<vector<double>> genParticle_l1tpt_;
-  vector<vector<double>> genParticle_l1teta_;
-  vector<vector<double>> genParticle_l1tphi_;
-  vector<vector<double>> genParticle_l1tcharge_;
-  vector<vector<double>> genParticle_l1tq_;
-  vector<vector<double>> genParticle_l1tdr_;
-
   // -- trigger info.
   vector< std::string > vec_firedTrigger_;
   vector< std::string > vec_filterName_;
@@ -316,7 +373,68 @@ private:
   vector< double > vec_myHLTObj_eta_;
   vector< double > vec_myHLTObj_phi_;
 
-  // std::map<MuonHLTobjCorrelator::L1TTTrack,unsigned int> mTTTrackMap;
+  // all L1 tracks
+  vector<float> m_trk_pt;
+  vector<float> m_trk_eta;
+  vector<float> m_trk_phi;
+  vector<float> m_trk_d0;   // (filled if L1Tk_nPar==5, else 999)
+  vector<float> m_trk_z0;
+  std::vector<float> m_trk_rInv;
+  std::vector<float> m_trk_tanL;
+  std::vector<float> m_trk_MVA1;
+  std::vector<float> m_trk_MVA2;
+  std::vector<float> m_trk_MVA3;
+  vector<float> m_trk_chi2;
+  vector<float> m_trk_bendchi2;
+  vector<int>   m_trk_nstub;
+  vector<int>   m_trk_lhits;
+  vector<int>   m_trk_dhits;
+  vector<int>   m_trk_seed;
+  vector<unsigned int>   m_trk_phiSector;
+  vector<int>   m_trk_genuine;
+  vector<int>   m_trk_loose;
+  vector<int>   m_trk_unknown;
+  vector<int>   m_trk_combinatoric;
+  vector<int>   m_trk_fake; //0 fake, 1 track from primary interaction, 2 secondary track
+  vector<int>   m_trk_matchtp_pdgid;
+  vector<float> m_trk_matchtp_pt;
+  vector<float> m_trk_matchtp_eta;
+  vector<float> m_trk_matchtp_phi;
+  vector<float> m_trk_matchtp_z0;
+  vector<float> m_trk_matchtp_dxy;
+
+  vector<float> m_stub_x;
+  vector<float> m_stub_y;
+  vector<float> m_stub_z;
+  vector<int>   m_stub_isBarrel; // stub is in barrel (1) or in disk (0)
+  vector<int>   m_stub_layer;
+
+  // l1TkMuon
+  std::vector<float> mL1TkMu_pt;
+  std::vector<float> mL1TkMu_eta;
+  std::vector<float> mL1TkMu_phi;
+  std::vector<float> mL1TkMu_trkIsol;
+  std::vector<float> mL1TkMu_trkzVtx;
+  std::vector<float> mL1TkMu_dR;
+
+  std::vector<int> mL1TkMu_nTracksMatched;
+  std::vector<float> mL1TkMu_trackCurvature;
+
+  std::vector<unsigned int> mL1TkMu_quality;
+  std::vector<unsigned int> mL1TkMu_pattern;
+  std::vector<unsigned int> mL1TkMu_muonDetector;
+
+  std::vector<int> mL1TkMu_TTTpointer;
+
+  std::vector<float> mL1TkMu_muRefHwPt;
+  std::vector<int> mL1TkMu_muRefHwDXY;
+  std::vector<float> mL1TkMu_muRefHwEta;
+  std::vector<float> mL1TkMu_muRefHwPhi;
+  std::vector<int> mL1TkMu_muRefHwSign;
+  std::vector<int> mL1TkMu_muRefHwSignValid;
+  std::vector<int> mL1TkMu_muRefHwQual;
+
+  std::map<MuonHLTobjCorrelator::L1TTTrack,unsigned int> mTTTrackMap;
 
   class tmpTSOD {
   private:
@@ -391,6 +509,12 @@ private:
   int muon_isHighPtNew_[arrSize_];
   int muon_isSoft_[arrSize_];
 
+  int muon_isLooseTriggerMuon_[arrSize_];
+  int muon_isME0Muon_[arrSize_];
+  int muon_isGEMMuon_[arrSize_];
+  int muon_isRPCMuon_[arrSize_];
+  int muon_isGoodMuon_TMOneStationTight_[arrSize_];
+
   double muon_iso03_sumPt_[arrSize_];
   double muon_iso03_hadEt_[arrSize_];
   double muon_iso03_emEt_[arrSize_];
@@ -411,38 +535,16 @@ private:
   double muon_PFCluster04_ECAL_[arrSize_];
   double muon_PFCluster04_HCAL_[arrSize_];
 
-  double muon_inner_trkChi2_[arrSize_];
-  double muon_inner_validFraction_[arrSize_];
-  int    muon_inner_trackerLayers_[arrSize_];
-  int    muon_inner_trackerHits_[arrSize_];
-  int    muon_inner_lostTrackerHits_[arrSize_];
-  int    muon_inner_lostTrackerHitsIn_[arrSize_];
-  int    muon_inner_lostTrackerHitsOut_[arrSize_];
-  int    muon_inner_lostPixelHits_[arrSize_];
-  int    muon_inner_lostPixelBarrelHits_[arrSize_];
-  int    muon_inner_lostPixelEndcapHits_[arrSize_];
-  int    muon_inner_lostStripHits_[arrSize_];
-  int    muon_inner_lostStripTIBHits_[arrSize_];
-  int    muon_inner_lostStripTIDHits_[arrSize_];
-  int    muon_inner_lostStripTOBHits_[arrSize_];
-  int    muon_inner_lostStripTECHits_[arrSize_];
-  int    muon_inner_pixelLayers_[arrSize_];
-  int    muon_inner_pixelHits_[arrSize_];
-  int    muon_global_muonHits_[arrSize_];
-  double muon_global_trkChi2_[arrSize_];
-  int    muon_global_trackerLayers_[arrSize_];
-  int    muon_global_trackerHits_[arrSize_];
-  double muon_momentumChi2_[arrSize_];
-  double muon_positionChi2_[arrSize_];
-  double muon_glbKink_[arrSize_];
-  double muon_glbTrackProbability_[arrSize_];
-  double muon_globalDeltaEtaPhi_[arrSize_];
-  double muon_localDistance_[arrSize_];
-  double muon_staRelChi2_[arrSize_];
-  int    muon_tightMatch_[arrSize_];
-  double muon_trkKink_[arrSize_];
-  double muon_trkRelChi2_[arrSize_];
-  double muon_segmentCompatibility_[arrSize_];
+  double muon_normChi2_global_[arrSize_];
+  int muon_nTrackerHit_global_[arrSize_];
+  int muon_nTrackerLayer_global_[arrSize_];
+  int muon_nPixelHit_global_[arrSize_];
+  int muon_nMuonHit_global_[arrSize_];
+
+  double muon_normChi2_inner_[arrSize_];
+  int muon_nTrackerHit_inner_[arrSize_];
+  int muon_nTrackerLayer_inner_[arrSize_];
+  int muon_nPixelHit_inner_[arrSize_];
 
   double muon_pt_tuneP_[arrSize_];
   double muon_ptError_tuneP_[arrSize_];
@@ -453,33 +555,7 @@ private:
   int muon_nMatchedStation_[arrSize_];
   int muon_nMatchedRPCLayer_[arrSize_];
   int muon_stationMask_[arrSize_];
-
-  double muon_dxy_bs_[arrSize_];
-  double muon_dxyError_bs_[arrSize_];
-  double muon_dz_bs_[arrSize_];
-  double muon_dzError_[arrSize_];
-  double muon_IPSig_[arrSize_];
-
-  double muon_l1pt_[arrSize_];
-  double muon_l1eta_[arrSize_];
-  double muon_l1phi_[arrSize_];
-  double muon_l1charge_[arrSize_];
-  int    muon_l1q_[arrSize_];
-  double muon_l1dr_[arrSize_];
-  double muon_l1ptByQ_[arrSize_];
-  double muon_l1etaByQ_[arrSize_];
-  double muon_l1phiByQ_[arrSize_];
-  double muon_l1chargeByQ_[arrSize_];
-  int    muon_l1qByQ_[arrSize_];
-  double muon_l1drByQ_[arrSize_];
-
-  int muon_nl1t_[arrSize_];
-  vector<vector<double>> muon_l1tpt_;
-  vector<vector<double>> muon_l1teta_;
-  vector<vector<double>> muon_l1tphi_;
-  vector<vector<double>> muon_l1tcharge_;
-  vector<vector<double>> muon_l1tq_;
-  vector<vector<double>> muon_l1tdr_;
+  int muon_expectedNnumberOfMatchedStations_[arrSize_];
 
   std::map<tmpTSOD,unsigned int> MuonIterSeedMap;
   std::map<tmpTSOD,unsigned int> MuonIterNoIdSeedMap;
@@ -498,10 +574,6 @@ private:
   double L3Muon_phi_[arrSize_];
   double L3Muon_charge_[arrSize_];
   double L3Muon_trkPt_[arrSize_];
-
-  double L3Muon_ECALIso_[arrSize_];
-  double L3Muon_HCALIso_[arrSize_];
-  double L3Muon_trkIso_[arrSize_];
 
   // -- L2 muon
   int nL2Muon_;
@@ -529,29 +601,11 @@ private:
   double TkMuon_charge_[arrSize_];
   double TkMuon_trkPt_[arrSize_];
 
-  // -- iterL3 object from outside-in
   int    nIterL3OI_;
   double iterL3OI_inner_pt_[arrSize_];
   double iterL3OI_inner_eta_[arrSize_];
   double iterL3OI_inner_phi_[arrSize_];
   double iterL3OI_inner_charge_[arrSize_];
-  double iterL3OI_inner_trkChi2_[arrSize_];
-  double iterL3OI_inner_validFraction_[arrSize_];
-  int    iterL3OI_inner_trackerLayers_[arrSize_];
-  int    iterL3OI_inner_trackerHits_[arrSize_];
-  int    iterL3OI_inner_lostTrackerHits_[arrSize_];
-  int    iterL3OI_inner_lostTrackerHitsIn_[arrSize_];
-  int    iterL3OI_inner_lostTrackerHitsOut_[arrSize_];
-  int    iterL3OI_inner_lostPixelHits_[arrSize_];
-  int    iterL3OI_inner_lostPixelBarrelHits_[arrSize_];
-  int    iterL3OI_inner_lostPixelEndcapHits_[arrSize_];
-  int    iterL3OI_inner_lostStripHits_[arrSize_];
-  int    iterL3OI_inner_lostStripTIBHits_[arrSize_];
-  int    iterL3OI_inner_lostStripTIDHits_[arrSize_];
-  int    iterL3OI_inner_lostStripTOBHits_[arrSize_];
-  int    iterL3OI_inner_lostStripTECHits_[arrSize_];
-  int    iterL3OI_inner_pixelLayers_[arrSize_];
-  int    iterL3OI_inner_pixelHits_[arrSize_];
   double iterL3OI_outer_pt_[arrSize_];
   double iterL3OI_outer_eta_[arrSize_];
   double iterL3OI_outer_phi_[arrSize_];
@@ -560,34 +614,12 @@ private:
   double iterL3OI_global_eta_[arrSize_];
   double iterL3OI_global_phi_[arrSize_];
   double iterL3OI_global_charge_[arrSize_];
-  int    iterL3OI_global_muonHits_[arrSize_];
-  double iterL3OI_global_trkChi2_[arrSize_];
-  int    iterL3OI_global_trackerLayers_[arrSize_];
-  int    iterL3OI_global_trackerHits_[arrSize_];
 
-  // -- iterL3 object from inside-out step (from L2)
   int    nIterL3IOFromL2_;
   double iterL3IOFromL2_inner_pt_[arrSize_];
   double iterL3IOFromL2_inner_eta_[arrSize_];
   double iterL3IOFromL2_inner_phi_[arrSize_];
   double iterL3IOFromL2_inner_charge_[arrSize_];
-  double iterL3IOFromL2_inner_trkChi2_[arrSize_];
-  double iterL3IOFromL2_inner_validFraction_[arrSize_];
-  int    iterL3IOFromL2_inner_trackerLayers_[arrSize_];
-  int    iterL3IOFromL2_inner_trackerHits_[arrSize_];
-  int    iterL3IOFromL2_inner_lostTrackerHits_[arrSize_];
-  int    iterL3IOFromL2_inner_lostTrackerHitsIn_[arrSize_];
-  int    iterL3IOFromL2_inner_lostTrackerHitsOut_[arrSize_];
-  int    iterL3IOFromL2_inner_lostPixelHits_[arrSize_];
-  int    iterL3IOFromL2_inner_lostPixelBarrelHits_[arrSize_];
-  int    iterL3IOFromL2_inner_lostPixelEndcapHits_[arrSize_];
-  int    iterL3IOFromL2_inner_lostStripHits_[arrSize_];
-  int    iterL3IOFromL2_inner_lostStripTIBHits_[arrSize_];
-  int    iterL3IOFromL2_inner_lostStripTIDHits_[arrSize_];
-  int    iterL3IOFromL2_inner_lostStripTOBHits_[arrSize_];
-  int    iterL3IOFromL2_inner_lostStripTECHits_[arrSize_];
-  int    iterL3IOFromL2_inner_pixelLayers_[arrSize_];
-  int    iterL3IOFromL2_inner_pixelHits_[arrSize_];
   double iterL3IOFromL2_outer_pt_[arrSize_];
   double iterL3IOFromL2_outer_eta_[arrSize_];
   double iterL3IOFromL2_outer_phi_[arrSize_];
@@ -596,10 +628,6 @@ private:
   double iterL3IOFromL2_global_eta_[arrSize_];
   double iterL3IOFromL2_global_phi_[arrSize_];
   double iterL3IOFromL2_global_charge_[arrSize_];
-  int    iterL3IOFromL2_global_muonHits_[arrSize_];
-  double iterL3IOFromL2_global_trkChi2_[arrSize_];
-  int    iterL3IOFromL2_global_trackerLayers_[arrSize_];
-  int    iterL3IOFromL2_global_trackerHits_[arrSize_];
 
   // -- iterL3 object from outside-in + inside-out step (from L2)
   int    nIterL3FromL2_;
@@ -607,23 +635,6 @@ private:
   double iterL3FromL2_inner_eta_[arrSize_];
   double iterL3FromL2_inner_phi_[arrSize_];
   double iterL3FromL2_inner_charge_[arrSize_];
-  double iterL3FromL2_inner_trkChi2_[arrSize_];
-  double iterL3FromL2_inner_validFraction_[arrSize_];
-  int    iterL3FromL2_inner_trackerLayers_[arrSize_];
-  int    iterL3FromL2_inner_trackerHits_[arrSize_];
-  int    iterL3FromL2_inner_lostTrackerHits_[arrSize_];
-  int    iterL3FromL2_inner_lostTrackerHitsIn_[arrSize_];
-  int    iterL3FromL2_inner_lostTrackerHitsOut_[arrSize_];
-  int    iterL3FromL2_inner_lostPixelHits_[arrSize_];
-  int    iterL3FromL2_inner_lostPixelBarrelHits_[arrSize_];
-  int    iterL3FromL2_inner_lostPixelEndcapHits_[arrSize_];
-  int    iterL3FromL2_inner_lostStripHits_[arrSize_];
-  int    iterL3FromL2_inner_lostStripTIBHits_[arrSize_];
-  int    iterL3FromL2_inner_lostStripTIDHits_[arrSize_];
-  int    iterL3FromL2_inner_lostStripTOBHits_[arrSize_];
-  int    iterL3FromL2_inner_lostStripTECHits_[arrSize_];
-  int    iterL3FromL2_inner_pixelLayers_[arrSize_];
-  int    iterL3FromL2_inner_pixelHits_[arrSize_];
   double iterL3FromL2_outer_pt_[arrSize_];
   double iterL3FromL2_outer_eta_[arrSize_];
   double iterL3FromL2_outer_phi_[arrSize_];
@@ -632,35 +643,12 @@ private:
   double iterL3FromL2_global_eta_[arrSize_];
   double iterL3FromL2_global_phi_[arrSize_];
   double iterL3FromL2_global_charge_[arrSize_];
-  int    iterL3FromL2_global_muonHits_[arrSize_];
-  double iterL3FromL2_global_trkChi2_[arrSize_];
-  int    iterL3FromL2_global_trackerLayers_[arrSize_];
-  int    iterL3FromL2_global_trackerHits_[arrSize_];
 
-  // -- iterL3 object from inside-out step (from L1)
   int    nIterL3IOFromL1_;
   double iterL3IOFromL1_pt_[arrSize_];
   double iterL3IOFromL1_eta_[arrSize_];
   double iterL3IOFromL1_phi_[arrSize_];
   double iterL3IOFromL1_charge_[arrSize_];
-  int    iterL3IOFromL1_muonHits_[arrSize_];
-  double iterL3IOFromL1_trkChi2_[arrSize_];
-  double iterL3IOFromL1_validFraction_[arrSize_];
-  int    iterL3IOFromL1_trackerLayers_[arrSize_];
-  int    iterL3IOFromL1_trackerHits_[arrSize_];
-  int    iterL3IOFromL1_lostTrackerHits_[arrSize_];
-  int    iterL3IOFromL1_lostTrackerHitsIn_[arrSize_];
-  int    iterL3IOFromL1_lostTrackerHitsOut_[arrSize_];
-  int    iterL3IOFromL1_lostPixelHits_[arrSize_];
-  int    iterL3IOFromL1_lostPixelBarrelHits_[arrSize_];
-  int    iterL3IOFromL1_lostPixelEndcapHits_[arrSize_];
-  int    iterL3IOFromL1_lostStripHits_[arrSize_];
-  int    iterL3IOFromL1_lostStripTIBHits_[arrSize_];
-  int    iterL3IOFromL1_lostStripTIDHits_[arrSize_];
-  int    iterL3IOFromL1_lostStripTOBHits_[arrSize_];
-  int    iterL3IOFromL1_lostStripTECHits_[arrSize_];
-  int    iterL3IOFromL1_pixelLayers_[arrSize_];
-  int    iterL3IOFromL1_pixelHits_[arrSize_];
 
   // -- iterL3 object before applying ID @ HLT
   int nIterL3MuonNoID_;
@@ -669,41 +657,9 @@ private:
   double iterL3MuonNoID_eta_[arrSize_];
   double iterL3MuonNoID_phi_[arrSize_];
   double iterL3MuonNoID_charge_[arrSize_];
-  int    iterL3MuonNoID_isGLB_[arrSize_];
-  int    iterL3MuonNoID_isSTA_[arrSize_];
-  int    iterL3MuonNoID_isTRK_[arrSize_];
-  double iterL3MuonNoID_inner_trkChi2_[arrSize_];
-  double iterL3MuonNoID_inner_validFraction_[arrSize_];
-  int    iterL3MuonNoID_inner_trackerLayers_[arrSize_];
-  int    iterL3MuonNoID_inner_trackerHits_[arrSize_];
-  int    iterL3MuonNoID_inner_lostTrackerHits_[arrSize_];
-  int    iterL3MuonNoID_inner_lostTrackerHitsIn_[arrSize_];
-  int    iterL3MuonNoID_inner_lostTrackerHitsOut_[arrSize_];
-  int    iterL3MuonNoID_inner_lostPixelHits_[arrSize_];
-  int    iterL3MuonNoID_inner_lostPixelBarrelHits_[arrSize_];
-  int    iterL3MuonNoID_inner_lostPixelEndcapHits_[arrSize_];
-  int    iterL3MuonNoID_inner_lostStripHits_[arrSize_];
-  int    iterL3MuonNoID_inner_lostStripTIBHits_[arrSize_];
-  int    iterL3MuonNoID_inner_lostStripTIDHits_[arrSize_];
-  int    iterL3MuonNoID_inner_lostStripTOBHits_[arrSize_];
-  int    iterL3MuonNoID_inner_lostStripTECHits_[arrSize_];
-  int    iterL3MuonNoID_inner_pixelLayers_[arrSize_];
-  int    iterL3MuonNoID_inner_pixelHits_[arrSize_];
-  int    iterL3MuonNoID_global_muonHits_[arrSize_];
-  double iterL3MuonNoID_global_trkChi2_[arrSize_];
-  int    iterL3MuonNoID_global_trackerLayers_[arrSize_];
-  int    iterL3MuonNoID_global_trackerHits_[arrSize_];
-  double iterL3MuonNoID_momentumChi2_[arrSize_];
-  double iterL3MuonNoID_positionChi2_[arrSize_];
-  double iterL3MuonNoID_glbKink_[arrSize_];
-  double iterL3MuonNoID_glbTrackProbability_[arrSize_];
-  double iterL3MuonNoID_globalDeltaEtaPhi_[arrSize_];
-  double iterL3MuonNoID_localDistance_[arrSize_];
-  double iterL3MuonNoID_staRelChi2_[arrSize_];
-  int    iterL3MuonNoID_tightMatch_[arrSize_];
-  double iterL3MuonNoID_trkKink_[arrSize_];
-  double iterL3MuonNoID_trkRelChi2_[arrSize_];
-  double iterL3MuonNoID_segmentCompatibility_[arrSize_];
+  int iterL3MuonNoID_isGLB_[arrSize_];
+  int iterL3MuonNoID_isSTA_[arrSize_];
+  int iterL3MuonNoID_isTRK_[arrSize_];
 
   // -- iterL3 object after applying ID @ HLT
   int nIterL3Muon_;
@@ -712,41 +668,475 @@ private:
   double iterL3Muon_eta_[arrSize_];
   double iterL3Muon_phi_[arrSize_];
   double iterL3Muon_charge_[arrSize_];
-  int    iterL3Muon_isGLB_[arrSize_];
-  int    iterL3Muon_isSTA_[arrSize_];
-  int    iterL3Muon_isTRK_[arrSize_];
-  double iterL3Muon_inner_trkChi2_[arrSize_];
-  double iterL3Muon_inner_validFraction_[arrSize_];
-  int    iterL3Muon_inner_trackerLayers_[arrSize_];
-  int    iterL3Muon_inner_trackerHits_[arrSize_];
-  int    iterL3Muon_inner_lostTrackerHits_[arrSize_];
-  int    iterL3Muon_inner_lostTrackerHitsIn_[arrSize_];
-  int    iterL3Muon_inner_lostTrackerHitsOut_[arrSize_];
-  int    iterL3Muon_inner_lostPixelHits_[arrSize_];
-  int    iterL3Muon_inner_lostPixelBarrelHits_[arrSize_];
-  int    iterL3Muon_inner_lostPixelEndcapHits_[arrSize_];
-  int    iterL3Muon_inner_lostStripHits_[arrSize_];
-  int    iterL3Muon_inner_lostStripTIBHits_[arrSize_];
-  int    iterL3Muon_inner_lostStripTIDHits_[arrSize_];
-  int    iterL3Muon_inner_lostStripTOBHits_[arrSize_];
-  int    iterL3Muon_inner_lostStripTECHits_[arrSize_];
-  int    iterL3Muon_inner_pixelLayers_[arrSize_];
-  int    iterL3Muon_inner_pixelHits_[arrSize_];
-  int    iterL3Muon_global_muonHits_[arrSize_];
-  double iterL3Muon_global_trkChi2_[arrSize_];
-  int    iterL3Muon_global_trackerLayers_[arrSize_];
-  int    iterL3Muon_global_trackerHits_[arrSize_];
-  double iterL3Muon_momentumChi2_[arrSize_];
-  double iterL3Muon_positionChi2_[arrSize_];
-  double iterL3Muon_glbKink_[arrSize_];
-  double iterL3Muon_glbTrackProbability_[arrSize_];
-  double iterL3Muon_globalDeltaEtaPhi_[arrSize_];
-  double iterL3Muon_localDistance_[arrSize_];
-  double iterL3Muon_staRelChi2_[arrSize_];
-  int    iterL3Muon_tightMatch_[arrSize_];
-  double iterL3Muon_trkKink_[arrSize_];
-  double iterL3Muon_trkRelChi2_[arrSize_];
-  double iterL3Muon_segmentCompatibility_[arrSize_];
+  int iterL3Muon_isGLB_[arrSize_];
+  int iterL3Muon_isSTA_[arrSize_];
+  int iterL3Muon_isTRK_[arrSize_];
+
+  int nMuonCand_;
+
+  double muonCand_pt_[arrSize_];
+  double muonCand_eta_[arrSize_];
+  double muonCand_phi_[arrSize_];
+  double muonCand_px_[arrSize_];
+  double muonCand_py_[arrSize_];
+  double muonCand_pz_[arrSize_];
+  double muonCand_vx_[arrSize_];
+  double muonCand_vy_[arrSize_];
+  double muonCand_vz_[arrSize_];
+  double muonCand_dB_[arrSize_];
+  double muonCand_charge_[arrSize_];
+  int muonCand_isGLB_[arrSize_];
+  int muonCand_isSTA_[arrSize_];
+  int muonCand_isTRK_[arrSize_];
+  int muonCand_isMuon_[arrSize_];
+
+  double muonCand_inner_trkChi2_[arrSize_];
+  double muonCand_inner_validFraction_[arrSize_];
+  int    muonCand_inner_trackerLayers_[arrSize_];
+  int    muonCand_inner_trackerHits_[arrSize_];
+  int    muonCand_inner_lostTrackerHits_[arrSize_];
+  int    muonCand_inner_lostTrackerHitsIn_[arrSize_];
+  int    muonCand_inner_lostTrackerHitsOut_[arrSize_];
+  int    muonCand_inner_lostPixelHits_[arrSize_];
+  int    muonCand_inner_lostPixelBarrelHits_[arrSize_];
+  int    muonCand_inner_lostPixelEndcapHits_[arrSize_];
+  int    muonCand_inner_lostStripHits_[arrSize_];
+  int    muonCand_inner_lostStripTIBHits_[arrSize_];
+  int    muonCand_inner_lostStripTIDHits_[arrSize_];
+  int    muonCand_inner_lostStripTOBHits_[arrSize_];
+  int    muonCand_inner_lostStripTECHits_[arrSize_];
+  int    muonCand_inner_pixelLayers_[arrSize_];
+  int    muonCand_inner_pixelHits_[arrSize_];
+  int    muonCand_global_muonHits_[arrSize_];
+  double muonCand_global_trkChi2_[arrSize_];
+  int    muonCand_global_trackerLayers_[arrSize_];
+  int    muonCand_global_trackerHits_[arrSize_];
+
+  double muonCand_dxy_bs_[arrSize_];
+  double muonCand_dxyError_bs_[arrSize_];
+  double muonCand_dz_bs_[arrSize_];
+  double muonCand_dzError_[arrSize_];
+  double muonCand_IPSig_[arrSize_];
+
+  double muonCand_btlMatchChi2_[arrSize_];
+  double muonCand_etlMatchChi2_[arrSize_];
+  double muonCand_btlMatchTimeChi2_[arrSize_];
+  double muonCand_etlMatchTimeChi2_[arrSize_];
+  double muonCand_npixBarrel_[arrSize_];
+  double muonCand_npixEndcap_[arrSize_];
+  double muonCand_outermostHitPosition_[arrSize_];
+  double muonCand_p_[arrSize_];
+  double muonCand_beta_[arrSize_];
+  double muonCand_t0_[arrSize_];
+  double muonCand_sigmat0_[arrSize_];
+  double muonCand_pathLength_[arrSize_];
+  double muonCand_tmtd_[arrSize_];
+  double muonCand_sigmatmtd_[arrSize_];
+  double muonCand_tofMu_[arrSize_];
+  double muonCand_sigmaTofMu_[arrSize_];
+  double muonCand_mtdpos_x_[arrSize_];
+  double muonCand_mtdpos_y_[arrSize_];
+  double muonCand_mtdpos_z_[arrSize_];
+  
+  int nECAL_;
+
+  double ecal_et_[arrSize_];
+  double ecal_pt_[arrSize_];
+  double ecal_eta_[arrSize_];
+  double ecal_phi_[arrSize_];
+  double ecal_charge_[arrSize_];
+  double ecal_px_[arrSize_];
+  double ecal_py_[arrSize_];
+  double ecal_pz_[arrSize_];
+  double ecal_vx_[arrSize_];
+  double ecal_vy_[arrSize_];
+  double ecal_vz_[arrSize_];
+  double ecal_time_[arrSize_];
+  double ecal_timeErr_[arrSize_];
+  double ecal_depth_[arrSize_];
+  double ecal_rho_[arrSize_];
+  int ecal_muonIdx_[arrSize_];
+  int ecal_nHits_[arrSize_];
+
+  int nECALHits_;
+  
+  double ecal_hit_energy_[arrSize_];
+  double ecal_hit_depth_[arrSize_];
+  double ecal_hit_time_[arrSize_];
+  double ecal_hit_timeErr_[arrSize_];
+  double ecal_hit_pt2_[arrSize_];
+  double ecal_hit_x_[arrSize_];
+  double ecal_hit_y_[arrSize_];
+  double ecal_hit_z_[arrSize_];
+  double ecal_hit_eta_[arrSize_];
+  double ecal_hit_phi_[arrSize_];
+  double ecal_hit_fraction_[arrSize_];
+  double ecal_hit_idx_[arrSize_];
+
+  int nHCAL_;
+
+  double hcal_et_[arrSize_];
+  double hcal_pt_[arrSize_];
+  double hcal_eta_[arrSize_];
+  double hcal_phi_[arrSize_];
+  double hcal_charge_[arrSize_];
+  double hcal_px_[arrSize_];
+  double hcal_py_[arrSize_];
+  double hcal_pz_[arrSize_];
+  double hcal_vx_[arrSize_];
+  double hcal_vy_[arrSize_];
+  double hcal_vz_[arrSize_];
+  double hcal_time_[arrSize_];
+  double hcal_timeErr_[arrSize_];
+  double hcal_depth_[arrSize_];
+  double hcal_rho_[arrSize_];
+  int hcal_muonIdx_[arrSize_];
+  int hcal_nHits_[arrSize_];
+
+  int nHCALHits_;
+
+  double hcal_hit_energy_[arrSize_];
+  double hcal_hit_depth_[arrSize_];
+  double hcal_hit_time_[arrSize_];
+  double hcal_hit_timeErr_[arrSize_];
+  double hcal_hit_pt2_[arrSize_];
+  double hcal_hit_x_[arrSize_];
+  double hcal_hit_y_[arrSize_];
+  double hcal_hit_z_[arrSize_];
+  double hcal_hit_eta_[arrSize_];
+  double hcal_hit_phi_[arrSize_];
+  double hcal_hit_fraction_[arrSize_];
+  double hcal_hit_idx_[arrSize_];
+
+  int nHGCAL_em_;
+
+  double hgcal_em_et_[arrSize_];
+  double hgcal_em_pt_[arrSize_];
+  double hgcal_em_eta_[arrSize_];
+  double hgcal_em_phi_[arrSize_];
+  double hgcal_em_charge_[arrSize_];
+  double hgcal_em_px_[arrSize_];
+  double hgcal_em_py_[arrSize_];
+  double hgcal_em_pz_[arrSize_];
+  double hgcal_em_vx_[arrSize_];
+  double hgcal_em_vy_[arrSize_];
+  double hgcal_em_vz_[arrSize_];
+  double hgcal_em_time_[arrSize_];
+  double hgcal_em_timeErr_[arrSize_];
+  double hgcal_em_depth_[arrSize_];
+  double hgcal_em_algoID_[arrSize_];
+  int hgcal_em_muonIdx_[arrSize_];
+  
+  int nHGCAL_had_;
+  
+  double hgcal_had_et_[arrSize_];
+  double hgcal_had_pt_[arrSize_];
+  double hgcal_had_eta_[arrSize_];
+  double hgcal_had_phi_[arrSize_];
+  double hgcal_had_charge_[arrSize_];
+  double hgcal_had_px_[arrSize_];
+  double hgcal_had_py_[arrSize_];
+  double hgcal_had_pz_[arrSize_];
+  double hgcal_had_vx_[arrSize_];
+  double hgcal_had_vy_[arrSize_];
+  double hgcal_had_vz_[arrSize_];
+  double hgcal_had_time_[arrSize_];
+  double hgcal_had_timeErr_[arrSize_];
+  double hgcal_had_depth_[arrSize_];
+  double hgcal_had_algoID_[arrSize_];
+  int hgcal_had_muonIdx_[arrSize_];
+
+  int nTrack_;
+  
+  double track_pt_[arrSize_];
+  double track_eta_[arrSize_];
+  double track_phi_[arrSize_];
+  double track_charge_[arrSize_];
+  double track_px_[arrSize_];
+  double track_py_[arrSize_];
+  double track_pz_[arrSize_];
+  double track_vx_[arrSize_];
+  double track_vy_[arrSize_];
+  double track_vz_[arrSize_];
+  double track_dxy_bs_[arrSize_];
+  double track_dxyError_bs_[arrSize_];
+  double track_dz_bs_[arrSize_];
+  double track_dzError_[arrSize_];
+  double track_trkChi2_[arrSize_];
+  int    track_trackerLayers_[arrSize_];
+  int    track_trackerHits_[arrSize_];
+  int    track_lostTrackerHits_[arrSize_];
+  int    track_lostTrackerHitsIn_[arrSize_];
+  int    track_lostTrackerHitsOut_[arrSize_];
+  int    track_lostPixelHits_[arrSize_];
+  int    track_lostPixelBarrelHits_[arrSize_];
+  int    track_lostPixelEndcapHits_[arrSize_];
+  int    track_lostStripHits_[arrSize_];
+  int    track_lostStripTIBHits_[arrSize_];
+  int    track_lostStripTIDHits_[arrSize_];
+  int    track_lostStripTOBHits_[arrSize_];
+  int    track_lostStripTECHits_[arrSize_];
+  int    track_pixelLayers_[arrSize_];
+  int    track_pixelHits_[arrSize_];
+  int    track_muonHits_[arrSize_];
+  float  track_t0Src_[arrSize_];
+  float  track_Sigmat0Src_[arrSize_];
+  float  track_t0Pid_[arrSize_];
+  float  track_t0Safe_[arrSize_];
+  float  track_sigmat0Safe_[arrSize_];
+  float  track_mtdQualMVA_[arrSize_];
+  float  track_tMtd_[arrSize_];
+  float  track_tofPi_[arrSize_];
+  float  track_tofK_[arrSize_];
+  float  track_tofP_[arrSize_];
+  float  track_probPi_[arrSize_];
+  float  track_probK_[arrSize_];
+  float  track_probP_[arrSize_];
+  float  track_sigmatofpi_[arrSize_];
+  float  track_sigmatofk_[arrSize_];
+  float  track_sigmatofp_[arrSize_];
+  float  track_btlMatchChi2_[arrSize_];
+  float  track_btlMatchTimeChi2_[arrSize_];
+  float  track_etlMatchChi2_[arrSize_];
+  float  track_etlMatchTimeChi2_[arrSize_];
+  int    track_npixBarrel_[arrSize_];
+  int    track_npixEndcap_[arrSize_];
+  int    track_muonIdx_[arrSize_];
+  float track_outermostHitPosition_[arrSize_];
+  float track_p_[arrSize_];
+  float track_beta_[arrSize_];
+  float track_pathLength_[arrSize_];
+  float track_mtdpos_x_[arrSize_];
+  float track_mtdpos_y_[arrSize_];
+  float track_mtdpos_z_[arrSize_];
+  int track_TPcharge_[arrSize_];
+  int track_TPpdgId_[arrSize_];
+  float track_TPenergy_[arrSize_];
+  float track_TPpt_[arrSize_];
+  float track_TPeta_[arrSize_];
+  float track_TPphi_[arrSize_];
+  float track_TPparentVx_[arrSize_];
+  float track_TPparentVy_[arrSize_];
+  float track_TPparentVz_[arrSize_];
+  int track_TPstatus_[arrSize_];
+  int track_TPnumberOfHits_[arrSize_];
+  int track_TPnumberOfTrackerHits_[arrSize_];
+  int track_TPnumberOfTrackerLayers_[arrSize_];
+
+  int nPFCand_;
+  double pfcand_pt_[arrSize_];
+  double pfcand_eta_[arrSize_];
+  double pfcand_phi_[arrSize_];
+  int pfcand_charge_[arrSize_];
+  int pfcand_pdgId_[arrSize_];
+  double pfcand_px_[arrSize_];
+  double pfcand_py_[arrSize_];
+  double pfcand_pz_[arrSize_];
+  double pfcand_vx_[arrSize_];
+  double pfcand_vy_[arrSize_];
+  double pfcand_vz_[arrSize_];
+  double pfcand_time_[arrSize_];
+  double pfcand_timeErr_[arrSize_];
+  double pfcand_dxy_[arrSize_];
+  double pfcand_dz_[arrSize_];
+  double pfcand_dxyErr_[arrSize_];
+  double pfcand_dzErr_[arrSize_];
+  double pfcand_vChi2NoF_[arrSize_];
+  int pfcand_muonIdx_[arrSize_];
+  
+  class seedTemplate {
+  private:
+    int nSeeds_;
+    std::vector<int> dir_;
+    std::vector<uint32_t> tsos_detId_;
+    std::vector<float> tsos_pt_;
+    std::vector<float> tsos_pt_val_;
+    std::vector<float> tsos_eta_;
+    std::vector<float> tsos_phi_;
+    std::vector<float> tsos_glob_x_;
+    std::vector<float> tsos_glob_y_;
+    std::vector<float> tsos_glob_z_;
+    std::vector<int> tsos_hasErr_;
+    std::vector<float> tsos_err0_;
+    std::vector<float> tsos_err1_;
+    std::vector<float> tsos_err2_;
+    std::vector<float> tsos_err3_;
+    std::vector<float> tsos_err4_;
+    std::vector<float> tsos_err5_;
+    std::vector<float> tsos_err6_;
+    std::vector<float> tsos_err7_;
+    std::vector<float> tsos_err8_;
+    std::vector<float> tsos_err9_;
+    std::vector<float> tsos_err10_;
+    std::vector<float> tsos_err11_;
+    std::vector<float> tsos_err12_;
+    std::vector<float> tsos_err13_;
+    std::vector<float> tsos_err14_;
+    std::vector<float> tsos_x_;
+    std::vector<float> tsos_y_;
+    std::vector<float> tsos_dxdz_;
+    std::vector<float> tsos_dydz_;
+    std::vector<float> tsos_px_;
+    std::vector<float> tsos_py_;
+    std::vector<float> tsos_pz_;
+    std::vector<float> tsos_qbp_;
+    std::vector<int> tsos_charge_;
+    std::vector<int> iterL3Matched_;
+    std::vector<int> iterL3Ref_;
+    std::vector<int> tmpL3Ref_;
+  public:
+    void clear() {
+      nSeeds_ = 0;
+      dir_.clear();
+      tsos_detId_.clear();
+      tsos_pt_.clear();
+      tsos_pt_val_.clear();
+      tsos_eta_.clear();
+      tsos_phi_.clear();
+      tsos_glob_x_.clear();
+      tsos_glob_y_.clear();
+      tsos_glob_z_.clear();
+      tsos_hasErr_.clear();
+      tsos_err0_.clear();
+      tsos_err1_.clear();
+      tsos_err2_.clear();
+      tsos_err3_.clear();
+      tsos_err4_.clear();
+      tsos_err5_.clear();
+      tsos_err6_.clear();
+      tsos_err7_.clear();
+      tsos_err8_.clear();
+      tsos_err9_.clear();
+      tsos_err10_.clear();
+      tsos_err11_.clear();
+      tsos_err12_.clear();
+      tsos_err13_.clear();
+      tsos_err14_.clear();
+      tsos_x_.clear();
+      tsos_y_.clear();
+      tsos_dxdz_.clear();
+      tsos_dydz_.clear();
+      tsos_px_.clear();
+      tsos_py_.clear();
+      tsos_pz_.clear();
+      tsos_qbp_.clear();
+      tsos_charge_.clear();
+      iterL3Matched_.clear();
+      iterL3Ref_.clear();
+      tmpL3Ref_.clear();
+
+      return;
+    }
+
+    void setBranch(TTree* tmpntpl, TString name) {
+      tmpntpl->Branch("n"+name,             &nSeeds_);
+      tmpntpl->Branch(name+"_dir",          &dir_);
+      tmpntpl->Branch(name+"_tsos_detId",   &tsos_detId_);
+      tmpntpl->Branch(name+"_tsos_pt",      &tsos_pt_);
+      tmpntpl->Branch(name+"_tsos_pt_val",      &tsos_pt_val_);
+      tmpntpl->Branch(name+"_tsos_eta",      &tsos_eta_);
+      tmpntpl->Branch(name+"_tsos_phi",      &tsos_phi_);
+      tmpntpl->Branch(name+"_tsos_glob_x",      &tsos_glob_x_);
+      tmpntpl->Branch(name+"_tsos_glob_y",      &tsos_glob_y_);
+      tmpntpl->Branch(name+"_tsos_glob_z",      &tsos_glob_z_);
+      tmpntpl->Branch(name+"_tsos_hasErr",  &tsos_hasErr_);
+      tmpntpl->Branch(name+"_tsos_err0",    &tsos_err0_);
+      tmpntpl->Branch(name+"_tsos_err1",    &tsos_err1_);
+      tmpntpl->Branch(name+"_tsos_err2",    &tsos_err2_);
+      tmpntpl->Branch(name+"_tsos_err3",    &tsos_err3_);
+      tmpntpl->Branch(name+"_tsos_err4",    &tsos_err4_);
+      tmpntpl->Branch(name+"_tsos_err5",    &tsos_err5_);
+      tmpntpl->Branch(name+"_tsos_err6",    &tsos_err6_);
+      tmpntpl->Branch(name+"_tsos_err7",    &tsos_err7_);
+      tmpntpl->Branch(name+"_tsos_err8",    &tsos_err8_);
+      tmpntpl->Branch(name+"_tsos_err9",    &tsos_err9_);
+      tmpntpl->Branch(name+"_tsos_err10",   &tsos_err10_);
+      tmpntpl->Branch(name+"_tsos_err11",   &tsos_err11_);
+      tmpntpl->Branch(name+"_tsos_err12",   &tsos_err12_);
+      tmpntpl->Branch(name+"_tsos_err13",   &tsos_err13_);
+      tmpntpl->Branch(name+"_tsos_err14",   &tsos_err14_);
+      tmpntpl->Branch(name+"_tsos_x",       &tsos_x_);
+      tmpntpl->Branch(name+"_tsos_y",       &tsos_y_);
+      tmpntpl->Branch(name+"_tsos_dxdz",    &tsos_dxdz_);
+      tmpntpl->Branch(name+"_tsos_dydz",    &tsos_dydz_);
+      tmpntpl->Branch(name+"_tsos_px",      &tsos_px_);
+      tmpntpl->Branch(name+"_tsos_py",      &tsos_py_);
+      tmpntpl->Branch(name+"_tsos_pz",      &tsos_pz_);
+      tmpntpl->Branch(name+"_tsos_qbp",     &tsos_qbp_);
+      tmpntpl->Branch(name+"_tsos_charge",  &tsos_charge_);
+      tmpntpl->Branch(name+"_iterL3Matched", &iterL3Matched_);
+      tmpntpl->Branch(name+"_iterL3Ref", &iterL3Ref_);
+      tmpntpl->Branch(name+"_tmpL3Ref", &tmpL3Ref_);
+
+      return;
+    }
+
+    void fill(TrajectorySeed seed, edm::ESHandle<TrackerGeometry> tracker) {
+      GlobalVector p = tracker->idToDet(seed.startingState().detId())->surface().toGlobal(seed.startingState().parameters().momentum());
+      GlobalPoint x = tracker->idToDet(seed.startingState().detId())->surface().toGlobal(seed.startingState().parameters().position());
+
+      dir_.push_back(seed.direction());
+      tsos_detId_.push_back(seed.startingState().detId());
+      tsos_pt_.push_back(seed.startingState().pt());
+      tsos_pt_val_.push_back(p.perp());
+      tsos_eta_.push_back(p.eta());
+      tsos_phi_.push_back(p.phi());
+      tsos_glob_x_.push_back(x.x());
+      tsos_glob_y_.push_back(x.y());
+      tsos_glob_z_.push_back(x.z());
+      tsos_hasErr_.push_back(seed.startingState().hasError());
+      if( seed.startingState().hasError() ) {
+        tsos_err0_.push_back(seed.startingState().error(0));
+        tsos_err1_.push_back(seed.startingState().error(1));
+        tsos_err2_.push_back(seed.startingState().error(2));
+        tsos_err3_.push_back(seed.startingState().error(3));
+        tsos_err4_.push_back(seed.startingState().error(4));
+        tsos_err5_.push_back(seed.startingState().error(5));
+        tsos_err6_.push_back(seed.startingState().error(6));
+        tsos_err7_.push_back(seed.startingState().error(7));
+        tsos_err8_.push_back(seed.startingState().error(8));
+        tsos_err9_.push_back(seed.startingState().error(9));
+        tsos_err10_.push_back(seed.startingState().error(10));
+        tsos_err11_.push_back(seed.startingState().error(11));
+        tsos_err12_.push_back(seed.startingState().error(12));
+        tsos_err13_.push_back(seed.startingState().error(13));
+        tsos_err14_.push_back(seed.startingState().error(14));
+      }
+      else {  // sync vector size
+        tsos_err0_.push_back(-99999.);
+        tsos_err1_.push_back(-99999.);
+        tsos_err2_.push_back(-99999.);
+        tsos_err3_.push_back(-99999.);
+        tsos_err4_.push_back(-99999.);
+        tsos_err5_.push_back(-99999.);
+        tsos_err6_.push_back(-99999.);
+        tsos_err7_.push_back(-99999.);
+        tsos_err8_.push_back(-99999.);
+        tsos_err9_.push_back(-99999.);
+        tsos_err10_.push_back(-99999.);
+        tsos_err11_.push_back(-99999.);
+        tsos_err12_.push_back(-99999.);
+        tsos_err13_.push_back(-99999.);
+        tsos_err14_.push_back(-99999.);
+      }
+      tsos_x_.push_back(seed.startingState().parameters().position().x());
+      tsos_y_.push_back(seed.startingState().parameters().position().y());
+      tsos_dxdz_.push_back(seed.startingState().parameters().dxdz());
+      tsos_dydz_.push_back(seed.startingState().parameters().dydz());
+      tsos_px_.push_back(seed.startingState().parameters().momentum().x());
+      tsos_py_.push_back(seed.startingState().parameters().momentum().y());
+      tsos_pz_.push_back(seed.startingState().parameters().momentum().z());
+      tsos_qbp_.push_back(seed.startingState().parameters().qbp());
+      tsos_charge_.push_back(seed.startingState().parameters().charge());
+      nSeeds_++;
+
+      return;
+    }
+
+    void linkIterL3(int linkNo) { iterL3Ref_.push_back(linkNo); }
+    void linktmpL3(int linkNo) { tmpL3Ref_.push_back(linkNo); }
+    void matchingL3(int linkNo) { iterL3Matched_.push_back(linkNo); }
+  };
 
   class tmpTrk {
   private:
@@ -776,25 +1166,193 @@ private:
     tmpTrk(const reco::TrackRef trk_) { fill(trk_); }
   };
 
+  class muonTemplate {
+  private:
+    int nMuons;
+    std::vector<double> v_muon_pt;
+    std::vector<double> v_muon_inner_pt;
+    std::vector<double> v_muon_inner_ptError;
+    std::vector<double> v_muon_eta;
+    std::vector<double> v_muon_phi;
+    std::vector<double> v_muon_charge;
+    std::vector<double> v_muon_isGlobalMuon;
+    std::vector<double> v_muon_isStandAloneMuon;
+    std::vector<double> v_muon_isTrackerMuon;
+    std::vector<double> v_muon_isLooseTriggerMuon;
+    std::vector<double> v_muon_isME0Muon;
+    std::vector<double> v_muon_isGEMMuon;
+    std::vector<double> v_muon_isRPCMuon;
+    std::vector<double> v_muon_isGoodMuon_TMOneStationTight;
+    std::vector<double> v_muon_numberOfMatchedStations;
+    std::vector<double> v_muon_numberOfMatchedRPCLayers;
+    std::vector<double> v_muon_expectedNnumberOfMatchedStations;
+    std::vector<double> v_muon_inner_normalizedChi2;
+    std::vector<double> v_muon_inner_numberOfValidTrackerHits;
+    std::vector<double> v_muon_inner_trackerLayersWithMeasurement;
+    std::vector<double> v_muon_inner_numberOfValidPixelHits;
+    std::vector<double> v_muon_inner_dz_l1vtx;
+    // std::vector<double> v_muon_inner_dxy_l1vtx;
+
+    // Isolations
+    // iso[#iso type][#ev]
+    std::vector<std::string>        TrkIsolations_tag;
+    std::vector<std::vector<float>> TrkIsolations_value;
+    std::vector<std::string>        PFIsolations_tag;
+    std::vector<std::vector<float>> PFIsolations_value;
+
+  public:
+    void clear() {
+      nMuons = 0;
+      v_muon_pt.clear();
+      v_muon_inner_pt.clear();
+      v_muon_inner_ptError.clear();
+      v_muon_eta.clear();
+      v_muon_phi.clear();
+      v_muon_charge.clear();
+      v_muon_isGlobalMuon.clear();
+      v_muon_isStandAloneMuon.clear();
+      v_muon_isTrackerMuon.clear();
+      v_muon_isLooseTriggerMuon.clear();
+      v_muon_isME0Muon.clear();
+      v_muon_isGEMMuon.clear();
+      v_muon_isRPCMuon.clear();
+      v_muon_isGoodMuon_TMOneStationTight.clear();
+      v_muon_numberOfMatchedStations.clear();
+      v_muon_numberOfMatchedRPCLayers.clear();
+      v_muon_expectedNnumberOfMatchedStations.clear();
+      v_muon_inner_normalizedChi2.clear();
+      v_muon_inner_numberOfValidTrackerHits.clear();
+      v_muon_inner_trackerLayersWithMeasurement.clear();
+      v_muon_inner_numberOfValidPixelHits.clear();
+      v_muon_inner_dz_l1vtx.clear();
+      // v_muon_inner_dxy_l1vtx.clear();
+
+      for(unsigned i=0; i<TrkIsolations_tag.size(); ++i) {
+        TrkIsolations_value.at(i).clear();
+      }
+      for(unsigned i=0; i<PFIsolations_tag.size(); ++i) {
+        PFIsolations_value.at(i).clear();
+      }
+
+      return;
+    }
+
+    void setIsoTags( vector<std::string> TrkIsoTags, vector<std::string> PFIsoTags ) {
+      TrkIsolations_tag = TrkIsoTags;
+      for(unsigned i=0; i<TrkIsolations_tag.size(); ++i) {
+        TrkIsolations_value.push_back( {} );
+      }
+
+      PFIsolations_tag  = PFIsoTags;
+      for(unsigned i=0; i<PFIsolations_tag.size(); ++i) {
+        PFIsolations_value.push_back( {} );
+      }
+
+      return;
+    }
+
+    void setBranch(TTree* tmpntpl, TString name, bool doIso = false) {
+      tmpntpl->Branch("n"+name, &nMuons);
+      tmpntpl->Branch(name+"_pt", &v_muon_pt);
+      tmpntpl->Branch(name+"_inner_pt", &v_muon_inner_pt);
+      tmpntpl->Branch(name+"_inner_ptError", &v_muon_inner_ptError);
+      tmpntpl->Branch(name+"_eta", &v_muon_eta);
+      tmpntpl->Branch(name+"_phi", &v_muon_phi);
+      tmpntpl->Branch(name+"_charge", &v_muon_charge);
+      tmpntpl->Branch(name+"_isGlobalMuon", &v_muon_isGlobalMuon);
+      tmpntpl->Branch(name+"_isStandAloneMuon", &v_muon_isStandAloneMuon);
+      tmpntpl->Branch(name+"_isTrackerMuon", &v_muon_isTrackerMuon);
+      tmpntpl->Branch(name+"_isLooseTriggerMuon", &v_muon_isLooseTriggerMuon);
+      tmpntpl->Branch(name+"_isME0Muon", &v_muon_isME0Muon);
+      tmpntpl->Branch(name+"_isGEMMuon", &v_muon_isGEMMuon);
+      tmpntpl->Branch(name+"_isRPCMuon", &v_muon_isRPCMuon);
+      tmpntpl->Branch(name+"_isGoodMuon_TMOneStationTight", &v_muon_isGoodMuon_TMOneStationTight);
+      tmpntpl->Branch(name+"_numberOfMatchedStations", &v_muon_numberOfMatchedStations);
+      tmpntpl->Branch(name+"_numberOfMatchedRPCLayers", &v_muon_numberOfMatchedRPCLayers);
+      tmpntpl->Branch(name+"_expectedNnumberOfMatchedStations", &v_muon_expectedNnumberOfMatchedStations);
+      tmpntpl->Branch(name+"_inner_normalizedChi2", &v_muon_inner_normalizedChi2);
+      tmpntpl->Branch(name+"_inner_numberOfValidTrackerHits", &v_muon_inner_numberOfValidTrackerHits);
+      tmpntpl->Branch(name+"_inner_trackerLayersWithMeasurement", &v_muon_inner_trackerLayersWithMeasurement);
+      tmpntpl->Branch(name+"_inner_numberOfValidPixelHits", &v_muon_inner_numberOfValidPixelHits);
+      tmpntpl->Branch(name+"_inner_dz_l1vtx", &v_muon_inner_dz_l1vtx);
+      // tmpntpl->Branch(name+"_inner_dxy_l1vtx", &v_muon_inner_dxy_l1vtx);
+
+      if(doIso) {
+        for(unsigned i=0; i<TrkIsolations_tag.size(); ++i) {
+          TString Tag_tstr = TString(TrkIsolations_tag.at(i));
+          tmpntpl->Branch(name+"_"+Tag_tstr, &TrkIsolations_value.at(i));
+        }
+        for(unsigned i=0; i<PFIsolations_tag.size(); ++i) {
+          TString Tag_tstr = TString(PFIsolations_tag.at(i));
+          tmpntpl->Branch(name+"_"+Tag_tstr, &PFIsolations_value.at(i));
+        }
+      }
+
+      return;
+    }
+
+    void fillIso( vector<float> TrkIsolations, vector<float> PFIsolations ) {
+      for(unsigned i=0; i<TrkIsolations_tag.size(); ++i) {
+        TrkIsolations_value.at(i).push_back( TrkIsolations.at(i) );
+      }
+
+      for(unsigned i=0; i<PFIsolations_tag.size(); ++i) {
+        PFIsolations_value.at(i).push_back( PFIsolations.at(i) );
+      }
+
+      return;
+    }
+
+    void fill(const reco::Muon muon, double l1vtx_z) {
+      v_muon_pt.push_back(muon.pt());
+      v_muon_eta.push_back(muon.eta());
+      v_muon_phi.push_back(muon.phi());
+      v_muon_charge.push_back(muon.charge());
+      v_muon_isGlobalMuon.push_back(muon.isGlobalMuon());
+      v_muon_isStandAloneMuon.push_back(muon.isStandAloneMuon());
+      v_muon_isTrackerMuon.push_back(muon.isTrackerMuon());
+      v_muon_isLooseTriggerMuon.push_back(muon::isLooseTriggerMuon(muon));
+      v_muon_isME0Muon.push_back(muon.isME0Muon());
+      v_muon_isGEMMuon.push_back(muon.isGEMMuon());
+      v_muon_isRPCMuon.push_back(muon.isRPCMuon());
+      v_muon_isGoodMuon_TMOneStationTight.push_back(muon::isGoodMuon(muon, muon::TMOneStationTight));
+      v_muon_numberOfMatchedStations.push_back(muon.numberOfMatchedStations());
+      v_muon_numberOfMatchedRPCLayers.push_back(muon.numberOfMatchedRPCLayers());
+      v_muon_expectedNnumberOfMatchedStations.push_back(muon.expectedNnumberOfMatchedStations());
+
+      if(muon.innerTrack().isNonnull()) {
+        v_muon_inner_pt.push_back(muon.innerTrack()->pt());
+        v_muon_inner_ptError.push_back(muon.innerTrack()->ptError());
+        v_muon_inner_normalizedChi2.push_back(muon.innerTrack()->normalizedChi2());
+        v_muon_inner_numberOfValidTrackerHits.push_back(muon.innerTrack()->hitPattern().numberOfValidTrackerHits());
+        v_muon_inner_trackerLayersWithMeasurement.push_back(muon.innerTrack()->hitPattern().trackerLayersWithMeasurement());
+        v_muon_inner_numberOfValidPixelHits.push_back(muon.innerTrack()->hitPattern().numberOfValidPixelHits());
+        v_muon_inner_dz_l1vtx.push_back(fabs(muon.innerTrack()->vz() - l1vtx_z));
+      }
+      else {
+        v_muon_inner_pt.push_back(-9999.);
+        v_muon_inner_ptError.push_back(-9999.);
+        v_muon_inner_normalizedChi2.push_back(-9999.);
+        v_muon_inner_numberOfValidTrackerHits.push_back(-9999.);
+        v_muon_inner_trackerLayersWithMeasurement.push_back(-9999.);
+        v_muon_inner_numberOfValidPixelHits.push_back(-9999.);
+        v_muon_inner_dz_l1vtx.push_back(-9999.);
+      }
+
+      nMuons++;
+
+      return;
+    }
+  };
+
   class trkTemplate {
   private:
     int nTrks;
     std::vector<double> trkPts;
+    std::vector<double> trkPtErrors;
     std::vector<double> trkEtas;
     std::vector<double> trkPhis;
     std::vector<int> trkCharges;
-    std::vector<double> px;
-    std::vector<double> py;
-    std::vector<double> pz;
-    std::vector<double> vx;
-    std::vector<double> vy;
-    std::vector<double> vz;
-    std::vector<double> dxy_bs;
-    std::vector<double> dxyError_bs;
-    std::vector<double> dz_bs;
-    std::vector<double> dzError;
-    std::vector<double> trkChi2;
-    std::vector<double> validFraction;
     std::vector<int> linkToL3s;
     std::vector<int> linkToL3NoIds;
     std::vector<float> bestMatchTP_charge;
@@ -812,27 +1370,26 @@ private:
     std::vector<int> bestMatchTP_numberOfTrackerLayers;
     std::vector<double> bestMatchTP_sharedFraction;
     std::vector<int> matchedTPsize;
-    std::vector<float> mva;
+    std::vector<float> mva0;
+    // std::vector<float> mva1;
+    // std::vector<float> mva2;
+    // std::vector<float> mva3;
+
+    // Isolations
+    // iso[#iso type][#ev]
+    std::vector<std::string>        TrkIsolations_tag;
+    std::vector<std::vector<float>> TrkIsolations_value;
+    std::vector<std::string>        PFIsolations_tag;
+    std::vector<std::vector<float>> PFIsolations_value;
 
   public:
     void clear() {
       nTrks = 0;
       trkPts.clear();
+      trkPtErrors.clear();
       trkEtas.clear();
       trkPhis.clear();
       trkCharges.clear();
-      px.clear();
-      py.clear();
-      pz.clear();
-      vx.clear();
-      vy.clear();
-      vz.clear();
-      dxy_bs.clear();
-      dxyError_bs.clear();
-      dz_bs.clear();
-      dzError.clear();
-      trkChi2.clear();
-      validFraction.clear();
       linkToL3s.clear();
       linkToL3NoIds.clear();
       bestMatchTP_charge.clear();
@@ -850,29 +1407,42 @@ private:
       bestMatchTP_numberOfTrackerLayers.clear();
       bestMatchTP_sharedFraction.clear();
       matchedTPsize.clear();
-      mva.clear();
+      mva0.clear();
+      // mva1.clear();
+      // mva2.clear();
+      // mva3.clear();
+
+      for(unsigned i=0; i<TrkIsolations_tag.size(); ++i) {
+        TrkIsolations_value.at(i).clear();
+      }
+      for(unsigned i=0; i<PFIsolations_tag.size(); ++i) {
+        PFIsolations_value.at(i).clear();
+      }
 
       return;
     }
 
-    void setBranch(TTree* tmpntpl, TString name) {
+    void setIsoTags( vector<std::string> TrkIsoTags, vector<std::string> PFIsoTags ) {
+      TrkIsolations_tag = TrkIsoTags;
+      for(unsigned i=0; i<TrkIsolations_tag.size(); ++i) {
+        TrkIsolations_value.push_back( {} );
+      }
+
+      PFIsolations_tag  = PFIsoTags;
+      for(unsigned i=0; i<PFIsolations_tag.size(); ++i) {
+        PFIsolations_value.push_back( {} );
+      }
+
+      return;
+    }
+
+    void setBranch(TTree* tmpntpl, TString name, bool doIso = false) {
       tmpntpl->Branch("n"+name, &nTrks);
       tmpntpl->Branch(name+"_pt", &trkPts);
+      tmpntpl->Branch(name+"_ptError", &trkPtErrors);
       tmpntpl->Branch(name+"_eta", &trkEtas);
       tmpntpl->Branch(name+"_phi", &trkPhis);
       tmpntpl->Branch(name+"_charge", &trkCharges);
-      tmpntpl->Branch(name+"_px", &px);
-      tmpntpl->Branch(name+"_py", &py);
-      tmpntpl->Branch(name+"_pz", &pz);
-      tmpntpl->Branch(name+"_vx", &vx);
-      tmpntpl->Branch(name+"_vy", &vy);
-      tmpntpl->Branch(name+"_vz", &vz);
-      tmpntpl->Branch(name+"_dxy_bs", &dxy_bs);
-      tmpntpl->Branch(name+"_dxyError_bs", &dxyError_bs);
-      tmpntpl->Branch(name+"_dz_bs", &dz_bs);
-      tmpntpl->Branch(name+"_dzError", &dzError);
-      tmpntpl->Branch(name+"_trkChi2", &trkChi2);
-      tmpntpl->Branch(name+"_validFraction", &validFraction);
       tmpntpl->Branch(name+"_matchedL3", &linkToL3s);
       tmpntpl->Branch(name+"_matchedL3NoId", &linkToL3NoIds);
       tmpntpl->Branch(name+"_bestMatchTP_charge", &bestMatchTP_charge);
@@ -890,28 +1460,43 @@ private:
       tmpntpl->Branch(name+"_bestMatchTP_numberOfTrackerLayers", &bestMatchTP_numberOfTrackerLayers);
       tmpntpl->Branch(name+"_bestMatchTP_sharedFraction", &bestMatchTP_sharedFraction);
       tmpntpl->Branch(name+"_matchedTPsize", &matchedTPsize);
-      tmpntpl->Branch(name+"_mva", &mva);
+      tmpntpl->Branch(name+"_mva0", &mva0);
+      // tmpntpl->Branch(name+"_mva1", &mva1);
+      // tmpntpl->Branch(name+"_mva2", &mva2);
+      // tmpntpl->Branch(name+"_mva3", &mva3);
+
+      if(doIso) {
+        for(unsigned i=0; i<TrkIsolations_tag.size(); ++i) {
+          TString Tag_tstr = TString(TrkIsolations_tag.at(i));
+          tmpntpl->Branch(name+"_"+Tag_tstr, &TrkIsolations_value.at(i));
+        }
+        for(unsigned i=0; i<PFIsolations_tag.size(); ++i) {
+          TString Tag_tstr = TString(PFIsolations_tag.at(i));
+          tmpntpl->Branch(name+"_"+Tag_tstr, &PFIsolations_value.at(i));
+        }
+      }
 
       return;
     }
 
-    void fill(const reco::Track& trk, const reco::BeamSpot* bs) {
+    void fillIso( vector<float> TrkIsolations, vector<float> PFIsolations ) {
+      for(unsigned i=0; i<TrkIsolations_tag.size(); ++i) {
+        TrkIsolations_value.at(i).push_back( TrkIsolations.at(i) );
+      }
+
+      for(unsigned i=0; i<PFIsolations_tag.size(); ++i) {
+        PFIsolations_value.at(i).push_back( PFIsolations.at(i) );
+      }
+
+      return;
+    }
+
+    void fill(const reco::Track trk) {
       trkPts.push_back(trk.pt());
+      trkPtErrors.push_back(trk.ptError());
       trkEtas.push_back(trk.eta());
       trkPhis.push_back(trk.phi());
       trkCharges.push_back(trk.charge());
-      px.push_back(trk.px());
-      py.push_back(trk.py());
-      pz.push_back(trk.pz());
-      vx.push_back(trk.vx());
-      vy.push_back(trk.vy());
-      vz.push_back(trk.vz());
-      dxy_bs.push_back(trk.dxy(bs->position()));
-      dxyError_bs.push_back(trk.dxyError(*bs));
-      dz_bs.push_back(trk.dz(bs->position()));
-      dzError.push_back(trk.dzError());
-      trkChi2.push_back(trk.normalizedChi2());
-      validFraction.push_back(trk.validFraction());
       nTrks++;
 
       return;
@@ -958,9 +1543,12 @@ private:
     int matchedIDpassedL3(int idx) { return linkToL3s.at(idx); }
     void fillBestTPsharedFrac(double frac) { bestMatchTP_sharedFraction.push_back(frac); }
     void fillmatchedTPsize(int TPsize) { matchedTPsize.push_back(TPsize); }
-    void fillMva( float mva0_, float mva1_, float mva2_, float mva3_ ) {
+    void fillMva( float mva0_ ) {
       // FIXME tmp solution
-      mva.push_back( (mva0_ +0.5) );
+      mva0.push_back( (mva0_ +0.5) );
+      // mva1.push_back( (mva1_ +0.5) );
+      // mva2.push_back( (mva2_ +0.5) );
+      // mva3.push_back( (mva3_ +0.5) );
     }
   };
 
@@ -989,20 +1577,9 @@ private:
     std::vector<double> bestMatchTrk_eta;
     std::vector<double> bestMatchTrk_phi;
     std::vector<int> bestMatchTrk_charge;
-    std::vector<double> bestMatchTrk_px;
-    std::vector<double> bestMatchTrk_py;
-    std::vector<double> bestMatchTrk_pz;
-    std::vector<double> bestMatchTrk_vx;
-    std::vector<double> bestMatchTrk_vy;
-    std::vector<double> bestMatchTrk_vz;
-    std::vector<double> bestMatchTrk_dxy_bs;
-    std::vector<double> bestMatchTrk_dxyError_bs;
-    std::vector<double> bestMatchTrk_dz_bs;
-    std::vector<double> bestMatchTrk_dzError;
-    std::vector<double> bestMatchTrk_normalizedChi2;
     std::vector<double> bestMatchTrk_quality;
     std::vector<int> bestMatchTrk_NValidHits;
-    std::vector<double> bestMatchTrk_mva;
+
   public:
     void clear() {
       nTP = 0;
@@ -1028,20 +1605,8 @@ private:
       bestMatchTrk_eta.clear();
       bestMatchTrk_phi.clear();
       bestMatchTrk_charge.clear();
-      bestMatchTrk_px.clear();
-      bestMatchTrk_py.clear();
-      bestMatchTrk_pz.clear();
-      bestMatchTrk_vx.clear();
-      bestMatchTrk_vy.clear();
-      bestMatchTrk_vz.clear();
-      bestMatchTrk_dxy_bs.clear();
-      bestMatchTrk_dxyError_bs.clear();
-      bestMatchTrk_dz_bs.clear();
-      bestMatchTrk_dzError.clear();
-      bestMatchTrk_normalizedChi2.clear();
       bestMatchTrk_quality.clear();
       bestMatchTrk_NValidHits.clear();
-      bestMatchTrk_mva.clear();
 
       return;
     }
@@ -1070,20 +1635,8 @@ private:
       tmpntpl->Branch(name+"_bestMatchTrk_eta", &bestMatchTrk_eta);
       tmpntpl->Branch(name+"_bestMatchTrk_phi", &bestMatchTrk_phi);
       tmpntpl->Branch(name+"_bestMatchTrk_charge", &bestMatchTrk_charge);
-      tmpntpl->Branch(name+"_bestMatchTrk_px", &bestMatchTrk_px);
-      tmpntpl->Branch(name+"_bestMatchTrk_py", &bestMatchTrk_py);
-      tmpntpl->Branch(name+"_bestMatchTrk_pz", &bestMatchTrk_pz);
-      tmpntpl->Branch(name+"_bestMatchTrk_vx", &bestMatchTrk_vx);
-      tmpntpl->Branch(name+"_bestMatchTrk_vy", &bestMatchTrk_vy);
-      tmpntpl->Branch(name+"_bestMatchTrk_vz", &bestMatchTrk_vz);
-      tmpntpl->Branch(name+"_bestMatchTrk_dxy_bs", &bestMatchTrk_dxy_bs);
-      tmpntpl->Branch(name+"_bestMatchTrk_dxyError_bs", &bestMatchTrk_dxyError_bs);
-      tmpntpl->Branch(name+"_bestMatchTrk_dz_bs", &bestMatchTrk_dz_bs);
-      tmpntpl->Branch(name+"_bestMatchTrk_dzError", &bestMatchTrk_dzError);
-      tmpntpl->Branch(name+"_bestMatchTrk_normalizedChi2", &bestMatchTrk_normalizedChi2);
       tmpntpl->Branch(name+"_bestMatchTrk_quality", &bestMatchTrk_quality);
       tmpntpl->Branch(name+"_bestMatchTrk_NValidHits", &bestMatchTrk_NValidHits);
-      tmpntpl->Branch(name+"_bestMatchTrk_mva", &bestMatchTrk_mva);
 
       return;
     }
@@ -1128,41 +1681,16 @@ private:
       double _eta,
       double _phi,
       int _charge,
-      double _bestMatchTrk_px,
-      double _bestMatchTrk_py,
-      double _bestMatchTrk_pz,
-      double _bestMatchTrk_vx,
-      double _bestMatchTrk_vy,
-      double _bestMatchTrk_vz,
-      double _bestMatchTrk_dxy_bs,
-      double _bestMatchTrk_dxyError_bs,
-      double _bestMatchTrk_dz_bs,
-      double _bestMatchTrk_dzError,
-      double _bestMatchTrk_normalizedChi2,
       double _quality,
-      int _NValidHits,
-      double _mva
+      int _NValidHits
     ) {
       bestMatchTrk_pt.push_back(_pt);
       bestMatchTrk_eta.push_back(_eta);
       bestMatchTrk_phi.push_back(_phi);
       bestMatchTrk_charge.push_back(_charge);
-      bestMatchTrk_px.push_back(_bestMatchTrk_px);
-      bestMatchTrk_py.push_back(_bestMatchTrk_py);
-      bestMatchTrk_pz.push_back(_bestMatchTrk_pz);
-      bestMatchTrk_vx.push_back(_bestMatchTrk_vx);
-      bestMatchTrk_vy.push_back(_bestMatchTrk_vy);
-      bestMatchTrk_vz.push_back(_bestMatchTrk_vz);
-      bestMatchTrk_dxy_bs.push_back(_bestMatchTrk_dxy_bs);
-      bestMatchTrk_dxyError_bs.push_back(_bestMatchTrk_dxyError_bs);
-      bestMatchTrk_dz_bs.push_back(_bestMatchTrk_dz_bs);
-      bestMatchTrk_dzError.push_back(_bestMatchTrk_dzError);
-      bestMatchTrk_normalizedChi2.push_back(_bestMatchTrk_normalizedChi2);
       bestMatchTrk_quality.push_back(_quality);
       bestMatchTrk_NValidHits.push_back(_NValidHits);
-      bestMatchTrk_mva.push_back(_mva + 0.5);
     }
-
   };
 
   class vtxTemplate {
@@ -1233,11 +1761,16 @@ private:
     int nHits;
     std::vector<bool> isValid;
     std::vector<float> localx, localy, localz, globalx, globaly, globalz;
+    // std::vector<float> localxx, localyy, localxy;
+    // std::vector<float> globalcxx, globalcyx, globalcyy, globalczx, globalczy, globalczz, globalctx, globalcty, blobalctz, globalctt;
   public:
     void clear() {
       nHits = 0;
       isValid.clear();
       localx.clear(); localy.clear(); localz.clear(); globalx.clear(); globaly.clear(); globalz.clear();
+      // localxx.clear(); localyy.clear(); localxy.clear();
+      // globalcxx.clear(); globalcyx.clear(); globalcyy.clear(); globalczx.clear(); globalczy.clear();
+      // globalczz.clear(); globalctx.clear(); globalcty.clear(); blobalctz.clear(); globalctt.clear();
 
       return;
     }
@@ -1270,6 +1803,25 @@ private:
   std::vector<tmpTrk> iterL3IDpassed;
   std::vector<tmpTrk> iterL3NoIDpassed;
 
+  seedTemplate* SThltIterL3OISeedsFromL2Muons = new seedTemplate();
+  seedTemplate* SThltIter0IterL3MuonPixelSeedsFromPixelTracks = new seedTemplate();
+  seedTemplate* SThltIter2IterL3MuonPixelSeeds = new seedTemplate();
+  seedTemplate* SThltIter3IterL3MuonPixelSeeds = new seedTemplate();
+  seedTemplate* SThltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks = new seedTemplate();
+  seedTemplate* SThltIter2IterL3FromL1MuonPixelSeeds = new seedTemplate();
+  seedTemplate* SThltIter3IterL3FromL1MuonPixelSeeds = new seedTemplate();
+
+  trkTemplate* TThltIterL3OIMuonTrack = new trkTemplate();
+  trkTemplate* TThltIter0IterL3MuonTrack = new trkTemplate();
+  trkTemplate* TThltIter2IterL3MuonTrack = new trkTemplate();
+  trkTemplate* TThltIter3IterL3MuonTrack = new trkTemplate();
+  trkTemplate* TThltIter0IterL3FromL1MuonTrack = new trkTemplate();
+  trkTemplate* TThltIter2IterL3FromL1MuonTrack = new trkTemplate();
+  trkTemplate* TThltIter3IterL3FromL1MuonTrack = new trkTemplate();
+
+  muonTemplate* MTL3MuonsNoId = new muonTemplate();
+  muonTemplate* MTL3Muons = new muonTemplate();
+
   tpTemplate* TrkParticle = new tpTemplate();
 
   vtxTemplate* VThltIterL3MuonTrimmedPixelVertices = new vtxTemplate();
@@ -1286,84 +1838,158 @@ private:
     bool
   );
 
-  void fill_trackTemplate(
+  void fill_trackTemplateMva(
     const edm::Event &iEvent,
-    edm::EDGetTokenT<edm::View<reco::Track>>& trkToken,
-    edm::EDGetTokenT<reco::RecoToSimCollection>& assoToken,
-    const TrackerGeometry& tracker,
-    const pairSeedMvaEstimator& pairMvaEstimator,
+    edm::EDGetTokenT<edm::View<reco::Track>>& theToken,
+    edm::Handle<reco::TrackToTrackingParticleAssociator>& theAssociator_,
+    edm::Handle<TrackingParticleCollection>& TPCollection_,
+    edm::ESHandle<TrackerGeometry>& tracker,
+    const pairSeedMvaEstimatorPhase2& pairSeedMvaEstimatorPhase2,
+    std::map<tmpTSOD,unsigned int>& trkMap,
     trkTemplate* TTtrack,
-    bool
+    edm::ESHandle<MagneticField> magfieldH,
+    const edm::EventSetup &iSetup,
+    const GeometricSearchTracker& geomTracker
   );
 
   void fill_tpTemplate(
     const edm::Event &iEvent,
     edm::EDGetTokenT<reco::SimToRecoCollection>& assoToken,
-    tpTemplate* TTtp
-  );
-
-  void fill_tpTemplate(
-    const edm::Event &iEvent,
-    edm::EDGetTokenT<reco::SimToRecoCollection>& assoToken,
-    const TrackerGeometry& tracker,
-    const pairSeedMvaEstimator& pairMvaEstimator,
     tpTemplate* TTtp
   );
 
   void Fill_TP( const edm::Event &iEvent, tpTemplate* TrkParticle );
 
   // -- seed MVA -- //
-  edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_B_;
-  edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_;
-  edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_E_;
-  edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_B_0_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_B_1_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_B_2_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_B_3_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_0_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_1_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_2_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_3_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_B_0_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_B_1_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_B_2_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_B_3_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_B_0_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_B_1_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_B_2_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_B_3_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_0_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_1_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_2_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_3_;
+  edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_0_;
+  // edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_1_;
+  // edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_2_;
+  // edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_3_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_0_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_1_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_2_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_3_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_E_0_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_E_1_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_E_2_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_E_3_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_0_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_1_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_2_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_3_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_E_0_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_E_1_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_E_2_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_E_3_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_E_0_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_E_1_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_E_2_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_E_3_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_0_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_1_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_2_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_3_;
+  edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_0_;
+  // edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_1_;
+  // edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_2_;
+  // edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_3_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_0_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_1_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_2_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_3_;
 
-  std::vector<double> mvaScaleMeanHltIter2IterL3MuonPixelSeeds_B_;
+  // std::vector<double> mvaScaleMeanHltIterL3OISeedsFromL2Muons_B_;
+  // std::vector<double> mvaScaleMeanHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_;
+  // std::vector<double> mvaScaleMeanHltIter2IterL3MuonPixelSeeds_B_;
+  // std::vector<double> mvaScaleMeanHltIter3IterL3MuonPixelSeeds_B_;
+  // std::vector<double> mvaScaleMeanHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_;
   std::vector<double> mvaScaleMeanHltIter2IterL3FromL1MuonPixelSeeds_B_;
-  std::vector<double> mvaScaleStdHltIter2IterL3MuonPixelSeeds_B_;
+  // std::vector<double> mvaScaleMeanHltIter3IterL3FromL1MuonPixelSeeds_B_;
+  // std::vector<double> mvaScaleStdHltIterL3OISeedsFromL2Muons_B_;
+  // std::vector<double> mvaScaleStdHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_;
+  // std::vector<double> mvaScaleStdHltIter2IterL3MuonPixelSeeds_B_;
+  // std::vector<double> mvaScaleStdHltIter3IterL3MuonPixelSeeds_B_;
+  // std::vector<double> mvaScaleStdHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_;
   std::vector<double> mvaScaleStdHltIter2IterL3FromL1MuonPixelSeeds_B_;
-  std::vector<double> mvaScaleMeanHltIter2IterL3MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleStdHltIter3IterL3FromL1MuonPixelSeeds_B_;
+
+  // std::vector<double> mvaScaleMeanHltIterL3OISeedsFromL2Muons_E_;
+  // std::vector<double> mvaScaleMeanHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_;
+  // std::vector<double> mvaScaleMeanHltIter2IterL3MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleMeanHltIter3IterL3MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleMeanHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_;
   std::vector<double> mvaScaleMeanHltIter2IterL3FromL1MuonPixelSeeds_E_;
-  std::vector<double> mvaScaleStdHltIter2IterL3MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleMeanHltIter3IterL3FromL1MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleStdHltIterL3OISeedsFromL2Muons_E_;
+  // std::vector<double> mvaScaleStdHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_;
+  // std::vector<double> mvaScaleStdHltIter2IterL3MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleStdHltIter3IterL3MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleStdHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_;
   std::vector<double> mvaScaleStdHltIter2IterL3FromL1MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleStdHltIter3IterL3FromL1MuonPixelSeeds_E_;
 
-  pairSeedMvaEstimator mvaHltIter2IterL3MuonPixelSeeds_;
-  pairSeedMvaEstimator mvaHltIter2IterL3FromL1MuonPixelSeeds_;
+  pairSeedMvaEstimatorPhase2 mvaPhase2HltIter2IterL3FromL1MuonPixelSeeds_;
 
-  vector<double> getSeedMva(
-    const pairSeedMvaEstimator& pairMvaEstimator,
+  double getSeedMva(
+    const pairSeedMvaEstimatorPhase2& pairSeedMvaEstimatorPhase2,
     const TrajectorySeed& seed,
-    GlobalVector global_p,
-    const l1t::MuonBxCollection& l1Muons,
-    const reco::RecoChargedCandidateCollection& l2Muons
+    const GlobalVector& global_p,
+    const GlobalPoint&  global_x,
+    const edm::Handle<l1t::TrackerMuonCollection>& h_L1TkMu,
+    const edm::ESHandle<MagneticField>& magfieldH,
+    const edm::EventSetup &iSetup,
+    const GeometricSearchTracker& geomTracker
   ) {
-    vector<double> v_mva = {};
+    // edm::ESHandle<Propagator> propagatorAlongH;
+    // iSetup.get<TrackingComponentsRecord>().get("PropagatorWithMaterialParabolicMf", propagatorAlongH);
+    edm::ESHandle<Propagator> propagatorAlongH = iSetup.getHandle(propagatorESToken_);
+    std::unique_ptr<Propagator> propagatorAlong = SetPropagationDirection(*propagatorAlongH, alongMomentum);
 
-    for(auto ic=0U; ic<pairMvaEstimator.size(); ++ic) {
-      if( fabs( global_p.eta() ) < 1.2 ) {
-        double mva = pairMvaEstimator.at(ic).first->computeMva(
-          seed,
-          global_p,
-          l1Muons,
-          l2Muons
-        );
-        v_mva.push_back( mva );
-      }
-      else {
-        double mva = pairMvaEstimator.at(ic).second->computeMva(
-          seed,
-          global_p,
-          l1Muons,
-          l2Muons
-        );
-        v_mva.push_back( mva );
-      }
+    double mva = 0.;
+
+    if( fabs( global_p.eta() ) < 1.2 ) {
+        mva = pairSeedMvaEstimatorPhase2.first->computeMva(
+        seed,
+        global_p,
+        global_x,
+        h_L1TkMu,
+        magfieldH,
+        *(propagatorAlong.get()),
+        geomTracker
+      );
     }
-    if( v_mva.size() != 1 ) {
-      cout << "getSeedMva: v_mva.size() != 1" << endl;
-    //  return { -99999., -99999., -99999., -99999. };
+    else {
+        mva = pairSeedMvaEstimatorPhase2.second->computeMva(
+        seed,
+        global_p,
+        global_x,
+        h_L1TkMu,
+        magfieldH,
+        *(propagatorAlong.get()),
+        geomTracker
+      );
     }
 
-    return v_mva;
+    return mva;
   }
 };

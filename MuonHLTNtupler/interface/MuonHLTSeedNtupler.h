@@ -11,7 +11,10 @@
 #include "FWCore/Framework/interface/ESHandle.h"
 #include "FWCore/Framework/interface/EventSetup.h"
 #include "FWCore/ParameterSet/interface/FileInPath.h"
-
+// ------ For CMSSW_12 ------
+#include "FWCore/Utilities/interface/ESGetToken.h"
+#include "FWCore/Utilities/interface/ESInputTag.h"
+// ---------------------------
 #include "DataFormats/Common/interface/Handle.h"
 #include "DataFormats/Common/interface/View.h"
 #include "DataFormats/Common/interface/TriggerResults.h"
@@ -34,10 +37,10 @@
 #include "DataFormats/VertexReco/interface/VertexFwd.h"
 #include "DataFormats/Scalers/interface/LumiScalers.h"
 
-// #include "DataFormats/L1TrackTrigger/interface/TTTypes.h"
-// #include "DataFormats/L1TrackTrigger/interface/TTCluster.h"
-// #include "DataFormats/L1TrackTrigger/interface/TTStub.h"
-// #include "DataFormats/L1TrackTrigger/interface/TTTrack.h"
+#include "DataFormats/L1TrackTrigger/interface/TTTypes.h"
+#include "DataFormats/L1TrackTrigger/interface/TTCluster.h"
+#include "DataFormats/L1TrackTrigger/interface/TTStub.h"
+#include "DataFormats/L1TrackTrigger/interface/TTTrack.h"
 
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 #include "HLTrigger/HLTcore/interface/HLTConfigProvider.h"
@@ -75,8 +78,8 @@
 #include "Geometry/CommonDetUnit/interface/GeomDetType.h"
 #include "Geometry/CommonDetUnit/interface/GeomDet.h"
 
-// #include "Geometry/CommonTopologies/interface/PixelGeomDetUnit.h"
-// #include "Geometry/CommonTopologies/interface/PixelGeomDetType.h"
+#include "Geometry/CommonTopologies/interface/PixelGeomDetUnit.h"
+#include "Geometry/CommonTopologies/interface/PixelGeomDetType.h"
 #include "Geometry/TrackerGeometryBuilder/interface/PixelTopologyBuilder.h"
 #include "Geometry/Records/interface/StackedTrackerGeometryRecord.h"
 
@@ -84,14 +87,28 @@
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingVertex.h"
 #include "SimDataFormats/TrackingHit/interface/PSimHitContainer.h"
 #include "SimDataFormats/TrackingHit/interface/PSimHit.h"
-// #include "SimTracker/TrackTriggerAssociation/interface/TTClusterAssociationMap.h"
-// #include "SimTracker/TrackTriggerAssociation/interface/TTStubAssociationMap.h"
-// #include "SimTracker/TrackTriggerAssociation/interface/TTTrackAssociationMap.h"
-// #include "DataFormats/L1TCorrelator/interface/TkMuon.h"
-// #include "DataFormats/L1TCorrelator/interface/TkMuonFwd.h"
-// #include "DataFormats/L1TCorrelator/interface/TkPrimaryVertex.h"
+#include "SimDataFormats/Associations/interface/TTClusterAssociationMap.h"
+#include "SimDataFormats/Associations/interface/TTStubAssociationMap.h"
+#include "SimDataFormats/Associations/interface/TTTrackAssociationMap.h"
+#include "DataFormats/L1TCorrelator/interface/TkMuon.h"
+#include "DataFormats/L1TCorrelator/interface/TkMuonFwd.h"
+#include "DataFormats/L1Trigger/interface/VertexWord.h"
+#include "DataFormats/L1TMuonPhase2/interface/TrackerMuon.h"
 
-#include "RecoMuon/TrackerSeedGenerator/interface/SeedMvaEstimator.h"
+#include "RecoMuon/TrackerSeedGenerator/interface/SeedMvaEstimatorPhase2.h"
+
+// -- for L1TkMu propagation
+#include "TrackingTools/GeomPropagators/interface/Propagator.h"
+#include "TrackingTools/Records/interface/TrackingComponentsRecord.h"
+#include "TrackingTools/TrajectoryState/interface/FreeTrajectoryState.h"
+#include "RecoTracker/TkDetLayers/interface/GeometricSearchTracker.h"
+#include "RecoTracker/TkDetLayers/interface/GeometricSearchTrackerBuilder.h"
+#include "Geometry/TrackerNumberingBuilder/interface/GeometricDet.h"
+#include "Geometry/Records/interface/IdealGeometryRecord.h"
+#include "DataFormats/TrackerCommon/interface/TrackerTopology.h"
+#include "Geometry/Records/interface/TrackerTopologyRcd.h"
+
+#include "MuonHLTTool/MuonHLTNtupler/interface/MuonHLTobjCorrelator.h"
 
 #include "TTree.h"
 #include "TString.h"
@@ -100,18 +117,20 @@ using namespace std;
 using namespace reco;
 using namespace edm;
 
+typedef pair<const DetLayer*, TrajectoryStateOnSurface> LayerTSOS;
+typedef pair<const DetLayer*, const TrackingRecHit*> LayerHit;
+
 class MuonHLTSeedNtupler : public edm::one::EDAnalyzer<>
 {
 public:
-  explicit MuonHLTSeedNtupler(const edm::ParameterSet &iConfig);
+  MuonHLTSeedNtupler(const edm::ParameterSet &iConfig);
   virtual ~MuonHLTSeedNtupler() {};
 
   virtual void analyze(const edm::Event &iEvent, const edm::EventSetup &iSetup);
   virtual void beginJob();
   virtual void endJob();
-
-  // virtual void beginRun(const edm::Run &iRun, const edm::EventSetup &iSetup);
-  // virtual void endRun(const edm::Run &iRun, const edm::EventSetup &iSetup);
+  virtual void beginRun(const edm::Run &iRun, const edm::EventSetup &iSetup);
+  virtual void endRun(const edm::Run &iRun, const edm::EventSetup &iSetup);
 
 private:
   void Init();
@@ -121,26 +140,28 @@ private:
   void Fill_IterL3TT(const edm::Event &iEvent);
   void Fill_Seed(const edm::Event &iEvent, const edm::EventSetup &iSetup);
 
-  const edm::ESGetToken<TrackerGeometry, TrackerDigiGeometryRecord> trackerGeometryToken_;
-
   // TrackerHitAssociator::Config trackerHitAssociatorConfig_;
   edm::EDGetTokenT<reco::TrackToTrackingParticleAssociator> associatorToken;
-  edm::EDGetTokenT<reco::TrackToTrackingParticleAssociator> seedAssociatorToken;
   edm::EDGetTokenT<TrackingParticleCollection> trackingParticleToken;
 
   edm::EDGetTokenT< reco::VertexCollection >                 t_offlineVertex_;
   edm::EDGetTokenT< std::vector<PileupSummaryInfo> >         t_PUSummaryInfo_;
 
+  edm::EDGetTokenT< std::vector< TTTrack< Ref_Phase2TrackerDigi_ > > > ttTrackToken_;
+
   edm::EDGetTokenT< l1t::MuonBxCollection >                  t_L1Muon_;
   edm::EDGetTokenT< reco::RecoChargedCandidateCollection >   t_L2Muon_;
 
-  edm::EDGetTokenT< edm::View<TrajectorySeed> >              t_hltIterL3OISeedsFromL2Muons_;
-  edm::EDGetTokenT< edm::View<TrajectorySeed> >              t_hltIter0IterL3MuonPixelSeedsFromPixelTracks_;
-  edm::EDGetTokenT< edm::View<TrajectorySeed> >              t_hltIter2IterL3MuonPixelSeeds_;
-  edm::EDGetTokenT< edm::View<TrajectorySeed> >              t_hltIter3IterL3MuonPixelSeeds_;
-  edm::EDGetTokenT< edm::View<TrajectorySeed> >              t_hltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_;
-  edm::EDGetTokenT< edm::View<TrajectorySeed> >              t_hltIter2IterL3FromL1MuonPixelSeeds_;
-  edm::EDGetTokenT< edm::View<TrajectorySeed> >              t_hltIter3IterL3FromL1MuonPixelSeeds_;
+  edm::EDGetTokenT<l1t::TrackerMuonCollection>               t_L1TkMuon_;
+  edm::EDGetTokenT<l1t::VertexWordCollection>                t_L1PrimaryVertex_;
+
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIterL3OISeedsFromL2Muons_;
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIter0IterL3MuonPixelSeedsFromPixelTracks_;
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIter2IterL3MuonPixelSeeds_;
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIter3IterL3MuonPixelSeeds_;
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_;
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIter2IterL3FromL1MuonPixelSeeds_;
+  edm::EDGetTokenT< TrajectorySeedCollection >               t_hltIter3IterL3FromL1MuonPixelSeeds_;
 
   edm::EDGetTokenT< edm::View<reco::Track> >               t_hltIterL3OIMuonTrack_;
   edm::EDGetTokenT< edm::View<reco::Track> >               t_hltIter0IterL3MuonTrack_;
@@ -152,25 +173,113 @@ private:
 
   edm::EDGetTokenT< reco::GenParticleCollection >            t_genParticle_;
 
-  edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_B_;
-  edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_;
-  edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_E_;
-  edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_;
+  // ------ For CMSSW_12 -------
+  const edm::ESGetToken<TrackerTopology, TrackerTopologyRcd> trackerTopologyESToken_;
+  const edm::ESGetToken<TrackerGeometry, TrackerDigiGeometryRecord> trackerGeometryESToken_;
+  const edm::ESGetToken<MagneticField, IdealMagneticFieldRecord> magFieldESToken_;
+  const edm::ESGetToken<GeometricDet, IdealGeometryRecord> geomDetESToken_;
+  const edm::ESGetToken<Propagator, TrackingComponentsRecord> propagatorESToken_;
+  // ---------------------------
 
-  std::vector<double> mvaScaleMeanHltIter2IterL3MuonPixelSeeds_B_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_B_0_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_B_1_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_B_2_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_B_3_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_0_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_1_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_2_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_3_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_B_0_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_B_1_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_B_2_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_B_3_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_B_0_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_B_1_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_B_2_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_B_3_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_0_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_1_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_2_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_3_;
+  edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_0_;
+  // edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_1_;
+  // edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_2_;
+  // edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_B_3_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_0_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_1_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_2_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_B_3_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_E_0_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_E_1_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_E_2_;
+  // edm::FileInPath mvaFileHltIterL3OISeedsFromL2Muons_E_3_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_0_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_1_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_2_;
+  // edm::FileInPath mvaFileHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_3_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_E_0_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_E_1_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_E_2_;
+  // edm::FileInPath mvaFileHltIter2IterL3MuonPixelSeeds_E_3_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_E_0_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_E_1_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_E_2_;
+  // edm::FileInPath mvaFileHltIter3IterL3MuonPixelSeeds_E_3_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_0_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_1_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_2_;
+  // edm::FileInPath mvaFileHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_3_;
+  edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_0_;
+  // edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_1_;
+  // edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_2_;
+  // edm::FileInPath mvaFileHltIter2IterL3FromL1MuonPixelSeeds_E_3_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_0_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_1_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_2_;
+  // edm::FileInPath mvaFileHltIter3IterL3FromL1MuonPixelSeeds_E_3_;
+
+  // std::vector<double> mvaScaleMeanHltIterL3OISeedsFromL2Muons_B_;
+  // std::vector<double> mvaScaleMeanHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_;
+  // std::vector<double> mvaScaleMeanHltIter2IterL3MuonPixelSeeds_B_;
+  // std::vector<double> mvaScaleMeanHltIter3IterL3MuonPixelSeeds_B_;
+  // std::vector<double> mvaScaleMeanHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_;
   std::vector<double> mvaScaleMeanHltIter2IterL3FromL1MuonPixelSeeds_B_;
-  std::vector<double> mvaScaleStdHltIter2IterL3MuonPixelSeeds_B_;
+  // std::vector<double> mvaScaleMeanHltIter3IterL3FromL1MuonPixelSeeds_B_;
+  // std::vector<double> mvaScaleStdHltIterL3OISeedsFromL2Muons_B_;
+  // std::vector<double> mvaScaleStdHltIter0IterL3MuonPixelSeedsFromPixelTracks_B_;
+  // std::vector<double> mvaScaleStdHltIter2IterL3MuonPixelSeeds_B_;
+  // std::vector<double> mvaScaleStdHltIter3IterL3MuonPixelSeeds_B_;
+  // std::vector<double> mvaScaleStdHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_B_;
   std::vector<double> mvaScaleStdHltIter2IterL3FromL1MuonPixelSeeds_B_;
-  std::vector<double> mvaScaleMeanHltIter2IterL3MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleStdHltIter3IterL3FromL1MuonPixelSeeds_B_;
+
+  // std::vector<double> mvaScaleMeanHltIterL3OISeedsFromL2Muons_E_;
+  // std::vector<double> mvaScaleMeanHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_;
+  // std::vector<double> mvaScaleMeanHltIter2IterL3MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleMeanHltIter3IterL3MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleMeanHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_;
   std::vector<double> mvaScaleMeanHltIter2IterL3FromL1MuonPixelSeeds_E_;
-  std::vector<double> mvaScaleStdHltIter2IterL3MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleMeanHltIter3IterL3FromL1MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleStdHltIterL3OISeedsFromL2Muons_E_;
+  // std::vector<double> mvaScaleStdHltIter0IterL3MuonPixelSeedsFromPixelTracks_E_;
+  // std::vector<double> mvaScaleStdHltIter2IterL3MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleStdHltIter3IterL3MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleStdHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_E_;
   std::vector<double> mvaScaleStdHltIter2IterL3FromL1MuonPixelSeeds_E_;
+  // std::vector<double> mvaScaleStdHltIter3IterL3FromL1MuonPixelSeeds_E_;
 
-  // typedef std::vector< std::pair<SeedMvaEstimator*, SeedMvaEstimator*> > pairSeedMvaEstimator;
-  typedef std::vector< std::pair<std::unique_ptr<const SeedMvaEstimator>, std::unique_ptr<const SeedMvaEstimator>>> pairSeedMvaEstimator;
+  //typedef std::vector< std::pair<SeedMvaEstimator*, SeedMvaEstimator*> > pairSeedMvaEstimator;
+  // typedef std::vector< std::pair<SeedMvaEstimatorPhase2*, SeedMvaEstimatorPhase2*> > pairSeedMvaEstimatorPhase2;
+  typedef std::pair<std::unique_ptr<const SeedMvaEstimatorPhase2>, std::unique_ptr<const SeedMvaEstimatorPhase2>> pairSeedMvaEstimatorPhase2;
 
-  pairSeedMvaEstimator mvaHltIter2IterL3MuonPixelSeeds_;
-  pairSeedMvaEstimator mvaHltIter2IterL3FromL1MuonPixelSeeds_;
+  // pairSeedMvaEstimator mvaHltIterL3OISeedsFromL2Muons_;
+  // pairSeedMvaEstimator mvaHltIter0IterL3MuonPixelSeedsFromPixelTracks_;
+  // pairSeedMvaEstimator mvaHltIter2IterL3MuonPixelSeeds_;
+  // pairSeedMvaEstimator mvaHltIter3IterL3MuonPixelSeeds_;
+  // pairSeedMvaEstimator mvaHltIter0IterL3FromL1MuonPixelSeedsFromPixelTracks_;
+  //pairSeedMvaEstimator mvaHltIter2IterL3FromL1MuonPixelSeeds_;
+  pairSeedMvaEstimatorPhase2 mvaPhase2HltIter2IterL3FromL1MuonPixelSeeds_;
+  // pairSeedMvaEstimator mvaHltIter3IterL3FromL1MuonPixelSeeds_;
 
   TTree *NTEvent_;
   TTree *NThltIterL3OI_;
@@ -256,19 +365,26 @@ private:
     std::vector<int> linkToL3s;
     std::vector<float> bestMatchTP_charge;
     std::vector<int> bestMatchTP_pdgId;
-    std::vector<float> bestMatchTP_energy;
-    std::vector<float> bestMatchTP_pt;
-    std::vector<float> bestMatchTP_eta;
-    std::vector<float> bestMatchTP_phi;
-    std::vector<float> bestMatchTP_parentVx;
-    std::vector<float> bestMatchTP_parentVy;
-    std::vector<float> bestMatchTP_parentVz;
+    std::vector<double> bestMatchTP_energy;
+    std::vector<double> bestMatchTP_pt;
+    std::vector<double> bestMatchTP_eta;
+    std::vector<double> bestMatchTP_phi;
+    std::vector<double> bestMatchTP_parentVx;
+    std::vector<double> bestMatchTP_parentVy;
+    std::vector<double> bestMatchTP_parentVz;
     std::vector<int> bestMatchTP_status;
     std::vector<int> bestMatchTP_numberOfHits;
     std::vector<int> bestMatchTP_numberOfTrackerHits;
     std::vector<int> bestMatchTP_numberOfTrackerLayers;
-    std::vector<float> bestMatchTP_sharedFraction;
+    std::vector<double> bestMatchTP_sharedFraction;
     std::vector<int> matchedTPsize;
+    std::vector<double> bestMatchTP_GenPt;
+    std::vector<double> bestMatchTP_GenEta;
+    std::vector<double> bestMatchTP_GenPhi;
+    std::vector<int> bestMatchTP_Gen_isPromptFinalState;
+    std::vector<int> bestMatchTP_Gen_isHardProcess;
+    std::vector<int> bestMatchTP_Gen_fromHardProcessFinalState;
+    std::vector<int> bestMatchTP_Gen_fromHardProcessDecayed;
   public:
     void clear() {
       nTrks = 0;
@@ -292,6 +408,13 @@ private:
       bestMatchTP_numberOfTrackerLayers.clear();
       bestMatchTP_sharedFraction.clear();
       matchedTPsize.clear();
+      bestMatchTP_GenPt.clear();
+      bestMatchTP_GenEta.clear();
+      bestMatchTP_GenPhi.clear();
+      bestMatchTP_Gen_isPromptFinalState.clear();
+      bestMatchTP_Gen_isHardProcess.clear();
+      bestMatchTP_Gen_fromHardProcessFinalState.clear();
+      bestMatchTP_Gen_fromHardProcessDecayed.clear();
 
       return;
     }
@@ -318,6 +441,13 @@ private:
       tmpntpl->Branch(name+"_bestMatchTP_numberOfTrackerLayers", &bestMatchTP_numberOfTrackerLayers);
       tmpntpl->Branch(name+"_bestMatchTP_sharedFraction", &bestMatchTP_sharedFraction);
       tmpntpl->Branch(name+"_matchedTPsize", &matchedTPsize);
+      tmpntpl->Branch(name+"_bestMatchTP_GenPt", &bestMatchTP_GenPt);
+      tmpntpl->Branch(name+"_bestMatchTP_GenEta", &bestMatchTP_GenEta);
+      tmpntpl->Branch(name+"_bestMatchTP_GenPhi", &bestMatchTP_GenPhi);
+      tmpntpl->Branch(name+"_bestMatchTP_Gen_isPromptFinalState", &bestMatchTP_Gen_isPromptFinalState);
+      tmpntpl->Branch(name+"_bestMatchTP_Gen_isHardProcess", &bestMatchTP_Gen_isHardProcess);
+      tmpntpl->Branch(name+"_bestMatchTP_Gen_fromHardProcessFinalState", &bestMatchTP_Gen_fromHardProcessFinalState);
+      tmpntpl->Branch(name+"_bestMatchTP_Gen_fromHardProcessDecayed", &bestMatchTP_Gen_fromHardProcessDecayed);
 
       return;
     }
@@ -339,7 +469,6 @@ private:
       bestMatchTP_pt.push_back(TP->pt());
       bestMatchTP_eta.push_back(TP->eta());
       bestMatchTP_phi.push_back(TP->phi());
-      //cout<<"[SeedNtupler:fillBestTP] bestMatchTP (pdg, pt, eta, phi, status) = ("<<TP->pdgId()<<", "<<TP->pt()<<", "<<TP->eta()<<", "<<TP->phi()<<", "<<TP->status()<<")"<<endl;
       bestMatchTP_parentVx.push_back(TP->vx());
       bestMatchTP_parentVy.push_back(TP->vy());
       bestMatchTP_parentVz.push_back(TP->vz());
@@ -347,6 +476,14 @@ private:
       bestMatchTP_numberOfHits.push_back(TP->numberOfHits());
       bestMatchTP_numberOfTrackerHits.push_back(TP->numberOfTrackerHits());
       bestMatchTP_numberOfTrackerLayers.push_back(TP->numberOfTrackerLayers());
+
+      bestMatchTP_GenPt.push_back( TP->genParticles().empty() ? -99999. : (*(TP->genParticles())[0]).pt() );
+      bestMatchTP_GenEta.push_back( TP->genParticles().empty() ? -99999. : (*(TP->genParticles())[0]).eta() );
+      bestMatchTP_GenPhi.push_back( TP->genParticles().empty() ? -99999. : (*(TP->genParticles())[0]).phi() );
+      bestMatchTP_Gen_isPromptFinalState.push_back( TP->genParticles().empty() ? -99999 : (int)(*(TP->genParticles())[0]).isPromptFinalState() );
+      bestMatchTP_Gen_isHardProcess.push_back( TP->genParticles().empty() ? -99999 : (int)(*(TP->genParticles())[0]).isHardProcess() );
+      bestMatchTP_Gen_fromHardProcessFinalState.push_back( TP->genParticles().empty() ? -99999 : (int)(*(TP->genParticles())[0]).fromHardProcessFinalState() );
+      bestMatchTP_Gen_fromHardProcessDecayed.push_back( TP->genParticles().empty() ? -99999 : (int)(*(TP->genParticles())[0]).fromHardProcessDecayed() );
 
       return;
     }
@@ -365,6 +502,13 @@ private:
       bestMatchTP_numberOfHits.push_back(-99999);
       bestMatchTP_numberOfTrackerHits.push_back(-99999);
       bestMatchTP_numberOfTrackerLayers.push_back(-99999);
+      bestMatchTP_GenPt.push_back(-99999.);
+      bestMatchTP_GenEta.push_back(-99999.);
+      bestMatchTP_GenPhi.push_back(-99999.);
+      bestMatchTP_Gen_isPromptFinalState.push_back(-99999);
+      bestMatchTP_Gen_isHardProcess.push_back(-99999);
+      bestMatchTP_Gen_fromHardProcessFinalState.push_back(-99999);
+      bestMatchTP_Gen_fromHardProcessDecayed.push_back(-99999);
 
       return;
     }
@@ -374,21 +518,15 @@ private:
     void fillBestTPsharedFrac(double frac) { bestMatchTP_sharedFraction.push_back(frac); }
     void fillmatchedTPsize(int TPsize) { matchedTPsize.push_back(TPsize); }
 
-    float get_bestMatchTP_charge(int idx) { return bestMatchTP_charge.at(idx); }
     int get_bestMatchTP_pdgId(int idx) { return bestMatchTP_pdgId.at(idx); }
-    float get_bestMatchTP_energy(int idx) { return bestMatchTP_energy.at(idx); }
-    float get_bestMatchTP_pt(int idx) { return bestMatchTP_pt.at(idx); }
-    float get_bestMatchTP_eta(int idx) { return bestMatchTP_eta.at(idx); }
-    float get_bestMatchTP_phi(int idx) { return bestMatchTP_phi.at(idx); }
-    float get_bestMatchTP_parentVx(int idx) { return bestMatchTP_parentVx.at(idx); }
-    float get_bestMatchTP_parentVy(int idx) { return bestMatchTP_parentVy.at(idx); }
-    float get_bestMatchTP_parentVz(int idx) { return bestMatchTP_parentVz.at(idx); }
-    int get_bestMatchTP_status(int idx) { return bestMatchTP_status.at(idx); }
-    int get_bestMatchTP_numberOfHits(int idx) { return bestMatchTP_numberOfHits.at(idx); }
-    int get_bestMatchTP_numberOfTrackerHits(int idx) { return bestMatchTP_numberOfTrackerHits.at(idx); }
-    int get_bestMatchTP_numberOfTrackerLayers(int idx) { return bestMatchTP_numberOfTrackerLayers.at(idx); }
-    float get_bestMatchTP_sharedFraction(int idx) { return bestMatchTP_sharedFraction.at(idx); }
     int get_matchedTPsize(int idx) { return matchedTPsize.at(idx); }
+    double get_bestMatchTP_GenPt(int idx) { return bestMatchTP_GenPt.at(idx); }
+    double get_bestMatchTP_GenEta(int idx) { return bestMatchTP_GenEta.at(idx); }
+    double get_bestMatchTP_GenPhi(int idx) { return bestMatchTP_GenPhi.at(idx); }
+    int get_bestMatchTP_Gen_isPromptFinalState(int idx) { return bestMatchTP_Gen_isPromptFinalState.at(idx); }
+    int get_bestMatchTP_Gen_isHardProcess(int idx) { return bestMatchTP_Gen_isHardProcess.at(idx); }
+    int get_bestMatchTP_Gen_fromHardProcessFinalState(int idx) { return bestMatchTP_Gen_fromHardProcessFinalState.at(idx); }
+    int get_bestMatchTP_Gen_fromHardProcessDecayed(int idx) { return bestMatchTP_Gen_fromHardProcessDecayed.at(idx); }
 
     void print() {
       std::cout << "\nnTrks: " << nTrks << std::endl;
@@ -419,11 +557,10 @@ private:
 
   class seedTemplate {
   private:
-    float mva_;
-    //float mva0_;
-    //float mva1_;
-    //float mva2_;
-    //float mva3_;
+    float mva0_;
+    // float mva1_;
+    // float mva2_;
+    // float mva3_;
     int truePU_;
     int dir_;
     uint32_t tsos_detId_;
@@ -459,7 +596,6 @@ private:
     float tsos_pz_;
     float tsos_qbp_;
     int tsos_charge_;
-    int nL1Muon_;
     float dR_minDRL1SeedP_;
     float dPhi_minDRL1SeedP_;
     float dR_minDPhiL1SeedX_;
@@ -468,55 +604,32 @@ private:
     float dPhi_minDRL1SeedP_AtVtx_;
     float dR_minDPhiL1SeedX_AtVtx_;
     float dPhi_minDPhiL1SeedX_AtVtx_;
-    float L1Muon_pt_;
-    float L1Muon_eta_;
-    float L1Muon_phi_;
-    int nL2Muon_;
     float dR_minDRL2SeedP_;
     float dPhi_minDRL2SeedP_;
     float dR_minDPhiL2SeedX_;
     float dPhi_minDPhiL2SeedX_;
-    float L2Muon_pt_;
-    float L2Muon_eta_;
-    float L2Muon_phi_;
     float dR_L1TkMuSeedP_;
     float dPhi_L1TkMuSeedP_;
-    float bestMatchTP_charge_;
     int bestMatchTP_pdgId_;
-    float bestMatchTP_energy_;
-    float bestMatchTP_pt_;
-    float bestMatchTP_eta_;
-    float bestMatchTP_phi_;
-    float bestMatchTP_parentVx_;
-    float bestMatchTP_parentVy_;
-    float bestMatchTP_parentVz_;
-    int bestMatchTP_status_;
-    int bestMatchTP_numberOfHits_;
-    int bestMatchTP_numberOfTrackerHits_;
-    int bestMatchTP_numberOfTrackerLayers_;
-    float bestMatchTP_sharedFraction_;
     int matchedTPsize_;
-    float bestMatchSeedTP_charge_;
-    int bestMatchSeedTP_pdgId_;
-    double bestMatchSeedTP_energy_;
-    double bestMatchSeedTP_pt_;
-    double bestMatchSeedTP_eta_;
-    double bestMatchSeedTP_phi_;
-    double bestMatchSeedTP_parentVx_;
-    double bestMatchSeedTP_parentVy_;
-    double bestMatchSeedTP_parentVz_;
-    int bestMatchSeedTP_status_;
-    int bestMatchSeedTP_numberOfHits_;
-    int bestMatchSeedTP_numberOfTrackerHits_;
-    int bestMatchSeedTP_numberOfTrackerLayers_;
-    double bestMatchSeedTP_sharedFraction_;
-    int matchedSeedTPsize_;
     float gen_pt_;
     float gen_eta_;
     float gen_phi_;
+    float bestMatchTP_GenPt_;
+    float bestMatchTP_GenEta_;
+    float bestMatchTP_GenPhi_;
+    int bestMatchTP_Gen_isPromptFinalState_;
+    int bestMatchTP_Gen_isHardProcess_;
+    int bestMatchTP_Gen_fromHardProcessFinalState_;
+    int bestMatchTP_Gen_fromHardProcessDecayed_;
   public:
-    void clear() {
-      mva_ = -99999.;
+    virtual ~seedTemplate() {}
+
+    void clear_base() {
+      mva0_ = -99999.;
+      // mva1_ = -99999.;
+      // mva2_ = -99999.;
+      // mva3_ = -99999.;
       truePU_ = -99999;
       dir_ = -99999;
       tsos_detId_ = 0;
@@ -552,7 +665,6 @@ private:
       tsos_pz_ = -99999.;
       tsos_qbp_ = -99999.;
       tsos_charge_ = -99999;
-      nL1Muon_ = 0;
       dR_minDRL1SeedP_ = -99999.;
       dPhi_minDRL1SeedP_ = -99999.;
       dR_minDPhiL1SeedX_ = -99999.;
@@ -561,58 +673,35 @@ private:
       dPhi_minDRL1SeedP_AtVtx_ = -99999.;
       dR_minDPhiL1SeedX_AtVtx_ = -99999.;
       dPhi_minDPhiL1SeedX_AtVtx_ = -99999.;
-      L1Muon_pt_ = -99999.;
-      L1Muon_eta_ = -99999.;
-      L1Muon_phi_ = -99999.;
-      nL2Muon_ = 0;
       dR_minDRL2SeedP_ = -99999.;
       dPhi_minDRL2SeedP_ = -99999.;
       dR_minDPhiL2SeedX_ = -99999.;
       dPhi_minDPhiL2SeedX_ = -99999.;
-      L2Muon_pt_ = -99999.;
-      L2Muon_eta_ = -99999.;
-      L2Muon_phi_ = -99999.;
       dR_L1TkMuSeedP_ = -99999.;
       dPhi_L1TkMuSeedP_ = -99999.;
-      bestMatchTP_charge_ = -99999.;
       bestMatchTP_pdgId_ = -99999;
-      bestMatchTP_energy_ = -99999.;
-      bestMatchTP_pt_ = -99999.;
-      bestMatchTP_eta_ = -99999.;
-      bestMatchTP_phi_ = -99999.;
-      bestMatchTP_parentVx_ = -99999.;
-      bestMatchTP_parentVy_ = -99999.;
-      bestMatchTP_parentVz_ = -99999.;
-      bestMatchTP_status_ = -99999;
-      bestMatchTP_numberOfHits_ = -99999;
-      bestMatchTP_numberOfTrackerHits_ = -99999;
-      bestMatchTP_numberOfTrackerLayers_ = -99999;
-      bestMatchTP_sharedFraction_ = -99999.;
       matchedTPsize_ = -99999;
-      bestMatchSeedTP_charge_ = -99999.;
-      bestMatchSeedTP_pdgId_ = -99999;
-      bestMatchSeedTP_energy_ = -99999.;
-      bestMatchSeedTP_pt_ = -99999.;
-      bestMatchSeedTP_eta_ = -99999.;
-      bestMatchSeedTP_phi_ = -99999.;
-      bestMatchSeedTP_parentVx_ = -99999.;
-      bestMatchSeedTP_parentVy_ = -99999.;
-      bestMatchSeedTP_parentVz_ = -99999.;
-      bestMatchSeedTP_status_ = -99999;
-      bestMatchSeedTP_numberOfHits_ = -99999;
-      bestMatchSeedTP_numberOfTrackerHits_ = -99999;
-      bestMatchSeedTP_numberOfTrackerLayers_ = -99999;
-      bestMatchSeedTP_sharedFraction_ = -99999.;
-      matchedSeedTPsize_ = -99999;
       gen_pt_ = -99999.;
       gen_eta_ = -99999.;
       gen_phi_ = -99999.;
+      bestMatchTP_GenPt_ = -99999.;
+      bestMatchTP_GenEta_ = -99999.;
+      bestMatchTP_GenPhi_ = -99999.;
+      bestMatchTP_Gen_isPromptFinalState_ = -99999;
+      bestMatchTP_Gen_isHardProcess_ = -99999;
+      bestMatchTP_Gen_fromHardProcessFinalState_ = -99999;
+      bestMatchTP_Gen_fromHardProcessDecayed_ = -99999;
 
       return;
     }
 
-    void setBranch(TTree* tmpntpl) {
-      tmpntpl->Branch("mva",          &mva_, "mva/F");
+    virtual void clear() { clear_base(); }
+
+    void setBranch_base(TTree* tmpntpl) {
+      tmpntpl->Branch("mva0",          &mva0_, "mva0/F");
+      // tmpntpl->Branch("mva1",          &mva1_, "mva1/F");
+      // tmpntpl->Branch("mva2",          &mva2_, "mva2/F");
+      // tmpntpl->Branch("mva3",          &mva3_, "mva3/F");
       tmpntpl->Branch("truePU",       &truePU_, "truePU/I");
       tmpntpl->Branch("dir",          &dir_, "dir/I");
       tmpntpl->Branch("tsos_detId",   &tsos_detId_, "tsos_detId/i");
@@ -648,7 +737,6 @@ private:
       tmpntpl->Branch("tsos_pz",      &tsos_pz_, "tsos_pz/F");
       tmpntpl->Branch("tsos_qbp",     &tsos_qbp_, "tsos_qbp/F");
       tmpntpl->Branch("tsos_charge",  &tsos_charge_, "tsos_charge/I");
-      tmpntpl->Branch("nL1Muon",     &nL1Muon_, "nL1Muon/I");
       tmpntpl->Branch("dR_minDRL1SeedP",     &dR_minDRL1SeedP_, "dR_minDRL1SeedP/F");
       tmpntpl->Branch("dPhi_minDRL1SeedP",   &dPhi_minDRL1SeedP_, "dPhi_minDRL1SeedP/F");
       tmpntpl->Branch("dR_minDPhiL1SeedX",   &dR_minDPhiL1SeedX_, "dR_minDPhiL1SeedX/F");
@@ -657,59 +745,33 @@ private:
       tmpntpl->Branch("dPhi_minDRL1SeedP_AtVtx",   &dPhi_minDRL1SeedP_AtVtx_, "dPhi_minDRL1SeedP_AtVtx/F");
       tmpntpl->Branch("dR_minDPhiL1SeedX_AtVtx",   &dR_minDPhiL1SeedX_AtVtx_, "dR_minDPhiL1SeedX_AtVtx/F");
       tmpntpl->Branch("dPhi_minDPhiL1SeedX_AtVtx", &dPhi_minDPhiL1SeedX_AtVtx_, "dPhi_minDPhiL1SeedX_AtVtx/F");
-      tmpntpl->Branch("L1Muon_pt", &L1Muon_pt_, "L1Muon_pt/F");
-      tmpntpl->Branch("L1Muon_eta", &L1Muon_eta_, "L1Muon_eta/F");
-      tmpntpl->Branch("L1Muon_phi", &L1Muon_phi_, "L1Muon_phi/F");
-      tmpntpl->Branch("nL2Muon",     &nL2Muon_, "nL2Muon/I");
       tmpntpl->Branch("dR_minDRL2SeedP",     &dR_minDRL2SeedP_, "dR_minDRL2SeedP/F");
       tmpntpl->Branch("dPhi_minDRL2SeedP",   &dPhi_minDRL2SeedP_, "dPhi_minDRL2SeedP/F");
       tmpntpl->Branch("dR_minDPhiL2SeedX",   &dR_minDPhiL2SeedX_, "dR_minDPhiL2SeedX/F");
       tmpntpl->Branch("dPhi_minDPhiL2SeedX", &dPhi_minDPhiL2SeedX_, "dPhi_minDPhiL2SeedX/F");
-      tmpntpl->Branch("L2Muon_pt", &L2Muon_pt_, "L2Muon_pt/F");
-      tmpntpl->Branch("L2Muon_eta", &L2Muon_eta_, "L2Muon_eta/F");
-      tmpntpl->Branch("L2Muon_phi", &L2Muon_phi_, "L2Muon_phi/F");
       tmpntpl->Branch("dR_L1TkMuSeedP",     &dR_L1TkMuSeedP_,   "dR_L1TkMuSeedP/F");
       tmpntpl->Branch("dPhi_L1TkMuSeedP",   &dPhi_L1TkMuSeedP_, "dPhi_L1TkMuSeedP/F");
-      tmpntpl->Branch("bestMatchTP_charge", &bestMatchTP_charge_, "bestMatchTP_charge/F");
       tmpntpl->Branch("bestMatchTP_pdgId", &bestMatchTP_pdgId_, "bestMatchTP_pdgId/I");
-      tmpntpl->Branch("bestMatchTP_energy", &bestMatchTP_energy_, "bestMatchTP_energy/F");
-      tmpntpl->Branch("bestMatchTP_pt", &bestMatchTP_pt_,   "bestMatchTP_pt/F");
-      tmpntpl->Branch("bestMatchTP_eta", &bestMatchTP_eta_, "bestMatchTP_eta/F");
-      tmpntpl->Branch("bestMatchTP_phi", &bestMatchTP_phi_, "bestMatchTP_phi/F");
-      tmpntpl->Branch("bestMatchTP_parentVx", &bestMatchTP_parentVx_, "bestMatchTP_parentVx/F");
-      tmpntpl->Branch("bestMatchTP_parentVy", &bestMatchTP_parentVy_, "bestMatchTP_parentVy/F");
-      tmpntpl->Branch("bestMatchTP_parentVz", &bestMatchTP_parentVz_, "bestMatchTP_parentVz/F");
-      tmpntpl->Branch("bestMatchTP_status", &bestMatchTP_status_, "bestMatchTP_status/I");
-      tmpntpl->Branch("bestMatchTP_numberOfHits", &bestMatchTP_numberOfHits_, "bestMatchTP_numberOfHits/I");
-      tmpntpl->Branch("bestMatchTP_numberOfTrackerHits", &bestMatchTP_numberOfTrackerHits_, "bestMatchTP_numberOfTrackerHits/I");
-      tmpntpl->Branch("bestMatchTP_numberOfTrackerLayers", &bestMatchTP_numberOfTrackerLayers_, "bestMatchTP_numberOfTrackerLayers/I");
-      tmpntpl->Branch("bestMatchTP_sharedFraction", &bestMatchTP_sharedFraction_, "bestMatchTP_sharedFraction/F");
       tmpntpl->Branch("matchedTPsize", &matchedTPsize_, "matchedTPsize/I");
-      tmpntpl->Branch("bestMatchSeedTP_charge", &bestMatchSeedTP_charge_, "bestMatchSeedTP_charge/F");
-      tmpntpl->Branch("bestMatchSeedTP_pdgId", &bestMatchSeedTP_pdgId_, "bestMatchSeedTP_pdgId/I");
-      tmpntpl->Branch("bestMatchSeedTP_energy", &bestMatchSeedTP_energy_, "bestMatchSeedTP_energy/D");
-      tmpntpl->Branch("bestMatchSeedTP_pt", &bestMatchSeedTP_pt_,   "bestMatchSeedTP_pt/D");
-      tmpntpl->Branch("bestMatchSeedTP_eta", &bestMatchSeedTP_eta_, "bestMatchSeedTP_eta/D");
-      tmpntpl->Branch("bestMatchSeedTP_phi", &bestMatchSeedTP_phi_, "bestMatchSeedTP_phi/D");
-      tmpntpl->Branch("bestMatchSeedTP_parentVx", &bestMatchSeedTP_parentVx_, "bestMatchSeedTP_parentVx/D");
-      tmpntpl->Branch("bestMatchSeedTP_parentVy", &bestMatchSeedTP_parentVy_, "bestMatchSeedTP_parentVy/D");
-      tmpntpl->Branch("bestMatchSeedTP_parentVz", &bestMatchSeedTP_parentVz_, "bestMatchSeedTP_parentVz/D");
-      tmpntpl->Branch("bestMatchSeedTP_status", &bestMatchSeedTP_status_, "bestMatchSeedTP_status/I");
-      tmpntpl->Branch("bestMatchSeedTP_numberOfHits", &bestMatchSeedTP_numberOfHits_, "bestMatchSeedTP_numberOfHits/I");
-      tmpntpl->Branch("bestMatchSeedTP_numberOfTrackerHits", &bestMatchSeedTP_numberOfTrackerHits_, "bestMatchSeedTP_numberOfTrackerHits/I");
-      tmpntpl->Branch("bestMatchSeedTP_numberOfTrackerLayers", &bestMatchSeedTP_numberOfTrackerLayers_, "bestMatchSeedTP_numberOfTrackerLayers/I");
-      tmpntpl->Branch("bestMatchSeedTP_sharedFraction", &bestMatchSeedTP_sharedFraction_, "bestMatchSeedTP_sharedFraction/D");
-      tmpntpl->Branch("matchedSeedTPsize", &matchedSeedTPsize_, "matchedSeedTPsize/I");
       tmpntpl->Branch("gen_pt",      &gen_pt_, "gen_pt/F");
       tmpntpl->Branch("gen_eta",     &gen_eta_, "gen_eta/F");
       tmpntpl->Branch("gen_phi",     &gen_phi_, "gen_phi/F");
+      tmpntpl->Branch("bestMatchTP_GenPt", &bestMatchTP_GenPt_, "bestMatchTP_GenPt/F");
+      tmpntpl->Branch("bestMatchTP_GenEta", &bestMatchTP_GenEta_, "bestMatchTP_GenEta/F");
+      tmpntpl->Branch("bestMatchTP_GenPhi", &bestMatchTP_GenPhi_, "bestMatchTP_GenPhi/F");
+      tmpntpl->Branch("bestMatchTP_Gen_isPromptFinalState", &bestMatchTP_Gen_isPromptFinalState_, "bestMatchTP_Gen_isPromptFinalState/I");
+      tmpntpl->Branch("bestMatchTP_Gen_isHardProcess", &bestMatchTP_Gen_isHardProcess_, "bestMatchTP_Gen_isHardProcess/I");
+      tmpntpl->Branch("bestMatchTP_Gen_fromHardProcessFinalState", &bestMatchTP_Gen_fromHardProcessFinalState_, "bestMatchTP_Gen_fromHardProcessFinalState/I");
+      tmpntpl->Branch("bestMatchTP_Gen_fromHardProcessDecayed", &bestMatchTP_Gen_fromHardProcessDecayed_, "bestMatchTP_Gen_fromHardProcessDecayed/I");
 
       return;
     }
 
-    void fill(TrajectorySeed seed, const TrackerGeometry& tracker) {
-      GlobalVector p = tracker.idToDet(seed.startingState().detId())->surface().toGlobal(seed.startingState().parameters().momentum());
-      GlobalPoint x = tracker.idToDet(seed.startingState().detId())->surface().toGlobal(seed.startingState().parameters().position());
+    virtual void setBranch(TTree* tmpntpl) { setBranch_base(tmpntpl); }
+
+    void fill(TrajectorySeed seed, edm::ESHandle<TrackerGeometry> tracker) {
+      GlobalVector p = tracker->idToDet(seed.startingState().detId())->surface().toGlobal(seed.startingState().parameters().momentum());
+      GlobalPoint x = tracker->idToDet(seed.startingState().detId())->surface().toGlobal(seed.startingState().parameters().position());
 
       dir_ = seed.direction();
       tsos_detId_ = seed.startingState().detId();
@@ -749,9 +811,18 @@ private:
       return;
     }
 
-    void fill_Mva( float mva0, float mva1, float mva2, float mva3 ) {
+    // void fill_Mva( float mva0, float mva1, float mva2, float mva3 ) {
+    //   // FIXME tmp solution
+    //   mva0_ = mva0 +0.5;
+    //   mva1_ = mva1 +0.5;
+    //   mva2_ = mva2 +0.5;
+    //   mva3_ = mva3 +0.5;
+    //   return;
+    // }
+    void fill_Mva( float mva0 ) {
       // FIXME tmp solution
-      mva_ = mva0 +0.5;
+      mva0_ = mva0 +0.5;
+
       return;
     }
 
@@ -773,13 +844,10 @@ private:
       return;
     }
 
-    void fill_L1vars( int nL1Muon,
-                      float dR_minDRL1SeedP,         float dPhi_minDRL1SeedP,
+    void fill_L1vars( float dR_minDRL1SeedP,         float dPhi_minDRL1SeedP,
                       float dR_minDPhiL1SeedX ,      float dPhi_minDPhiL1SeedX,
                       float dR_minDRL1SeedP_AtVtx,   float dPhi_minDRL1SeedP_AtVtx,
-                      float dR_minDPhiL1SeedX_AtVtx, float dPhi_minDPhiL1SeedX_AtVtx,
-                      float L1Muon_pt,               float L1Muon_eta,               float L1Muon_phi ) {
-      nL1Muon_                   = nL1Muon;
+                      float dR_minDPhiL1SeedX_AtVtx, float dPhi_minDPhiL1SeedX_AtVtx ) {
       dR_minDRL1SeedP_           = dR_minDRL1SeedP;
       dPhi_minDRL1SeedP_         = dPhi_minDRL1SeedP;
       dR_minDPhiL1SeedX_         = dR_minDPhiL1SeedX;
@@ -790,25 +858,16 @@ private:
       dR_minDPhiL1SeedX_AtVtx_   = dR_minDPhiL1SeedX_AtVtx;
       dPhi_minDPhiL1SeedX_AtVtx_ = dPhi_minDPhiL1SeedX_AtVtx;
 
-      L1Muon_pt_                 = L1Muon_pt;
-      L1Muon_eta_                = L1Muon_eta;
-      L1Muon_phi_                = L1Muon_phi;
       return;
     }
 
-    void fill_L2vars( int nL2Muon,
-                      float dR_minDRL2SeedP,         float dPhi_minDRL2SeedP,
-                      float dR_minDPhiL2SeedX ,      float dPhi_minDPhiL2SeedX,
-                      float L2Muon_pt,               float L2Muon_eta,               float L2Muon_phi ) {
-      nL2Muon_                   = nL2Muon;
+    void fill_L2vars( float dR_minDRL2SeedP,         float dPhi_minDRL2SeedP,
+                      float dR_minDPhiL2SeedX ,      float dPhi_minDPhiL2SeedX ) {
       dR_minDRL2SeedP_           = dR_minDRL2SeedP;
       dPhi_minDRL2SeedP_         = dPhi_minDRL2SeedP;
       dR_minDPhiL2SeedX_         = dR_minDPhiL2SeedX;
       dPhi_minDPhiL2SeedX_       = dPhi_minDPhiL2SeedX;
 
-      L2Muon_pt_                 = L2Muon_pt;
-      L2Muon_eta_                = L2Muon_eta;
-      L2Muon_phi_                = L2Muon_phi;
       return;
     }
 
@@ -819,40 +878,16 @@ private:
       if( index < 0 )
         return;
 
-      bestMatchTP_charge_                = TTtrack->get_bestMatchTP_charge(index);
-      bestMatchTP_pdgId_                 = TTtrack->get_bestMatchTP_pdgId(index);
-      bestMatchTP_energy_                = TTtrack->get_bestMatchTP_energy(index);
-      bestMatchTP_pt_                    = TTtrack->get_bestMatchTP_pt(index);
-      bestMatchTP_eta_                   = TTtrack->get_bestMatchTP_eta(index);
-      bestMatchTP_phi_                   = TTtrack->get_bestMatchTP_phi(index);
-      bestMatchTP_parentVx_              = TTtrack->get_bestMatchTP_parentVx(index);
-      bestMatchTP_parentVy_              = TTtrack->get_bestMatchTP_parentVy(index);
-      bestMatchTP_parentVz_              = TTtrack->get_bestMatchTP_parentVz(index);
-      bestMatchTP_status_                = TTtrack->get_bestMatchTP_status(index);
-      bestMatchTP_numberOfHits_          = TTtrack->get_bestMatchTP_numberOfHits(index);
-      bestMatchTP_numberOfTrackerHits_   = TTtrack->get_bestMatchTP_numberOfTrackerHits(index);
-      bestMatchTP_numberOfTrackerLayers_ = TTtrack->get_bestMatchTP_numberOfTrackerLayers(index);
-      bestMatchTP_sharedFraction_        = TTtrack->get_bestMatchTP_sharedFraction(index);
-      matchedTPsize_                     = TTtrack->get_matchedTPsize(index);
+      bestMatchTP_pdgId_ = TTtrack->get_bestMatchTP_pdgId(index);
+      matchedTPsize_ = TTtrack->get_matchedTPsize(index);
+      bestMatchTP_GenPt_ = (float)TTtrack->get_bestMatchTP_GenPt(index);
+      bestMatchTP_GenEta_ = (float)TTtrack->get_bestMatchTP_GenEta(index);
+      bestMatchTP_GenPhi_ = (float)TTtrack->get_bestMatchTP_GenPhi(index);
+      bestMatchTP_Gen_isPromptFinalState_ = TTtrack->get_bestMatchTP_Gen_isPromptFinalState(index);
+      bestMatchTP_Gen_isHardProcess_ = TTtrack->get_bestMatchTP_Gen_isHardProcess(index);
+      bestMatchTP_Gen_fromHardProcessFinalState_ = TTtrack->get_bestMatchTP_Gen_fromHardProcessFinalState(index);
+      bestMatchTP_Gen_fromHardProcessDecayed_ = TTtrack->get_bestMatchTP_Gen_fromHardProcessDecayed(index);
     }
-
-    void fill_SeedTP(const TrackingParticleRef TP) {
-      bestMatchSeedTP_charge_ = TP->charge();
-      bestMatchSeedTP_pdgId_ = TP->pdgId();
-      bestMatchSeedTP_energy_ = TP->energy();
-      bestMatchSeedTP_pt_ = TP->pt();
-      bestMatchSeedTP_eta_ = TP->eta();
-      bestMatchSeedTP_phi_ = TP->phi();
-      bestMatchSeedTP_parentVx_ = TP->vx();
-      bestMatchSeedTP_parentVy_ = TP->vy();
-      bestMatchSeedTP_parentVz_ = TP->vz();
-      bestMatchSeedTP_status_ = TP->status();
-      bestMatchSeedTP_numberOfHits_ = TP->numberOfHits();
-      bestMatchSeedTP_numberOfTrackerHits_ = TP->numberOfTrackerHits();
-      bestMatchSeedTP_numberOfTrackerLayers_ = TP->numberOfTrackerLayers();
-    }
-    void fill_SeedTPsharedFrac(double seed_frac) { bestMatchSeedTP_sharedFraction_ = seed_frac; }
-    void fill_matchedSeedTPsize(int SeedTPsize) { matchedSeedTPsize_ = SeedTPsize; }
 
     void fill_ntuple( TTree* tmpntpl ) {
       tmpntpl->Fill();
@@ -884,8 +919,8 @@ private:
 
   void fill_seedTemplate(
     const edm::Event &,
-    edm::EDGetTokenT<edm::View<TrajectorySeed>>&,
-    const TrackerGeometry&,
+    edm::EDGetTokenT<TrajectorySeedCollection>&, //pairSeedMvaEstimator
+    edm::ESHandle<TrackerGeometry>&,
     std::map<tmpTSOD,unsigned int>&,
     trkTemplate*,
     TTree*,
@@ -893,13 +928,202 @@ private:
   );
 
   void fill_seedTemplate(
-    const edm::Event &,
-    edm::EDGetTokenT<edm::View<TrajectorySeed>>&,
-    const pairSeedMvaEstimator&,
-    const TrackerGeometry&,
-    std::map<tmpTSOD,unsigned int>&,
-    trkTemplate*,
-    TTree*,
-    int &nSeed
+  const edm::Event &,
+  edm::EDGetTokenT<TrajectorySeedCollection>&,
+  const pairSeedMvaEstimatorPhase2&,
+  edm::ESHandle<TrackerGeometry>&,
+  std::map<tmpTSOD,unsigned int>&,
+  trkTemplate*,
+  TTree*,
+  int &nSeed,
+  edm::ESHandle<MagneticField> magfieldH,
+  const edm::EventSetup &iSetup,
+  const GeometricSearchTracker& geomTracker
+);
+
+  // HERE
+
+  class seedL1TSOSTemplate : public seedTemplate {
+  private:
+    float l1x1_;
+    float l1y1_;
+    float l1z1_;
+    float l1x2_;
+    float l1y2_;
+    float l1z2_;
+    float hitx1_;
+    float hity1_;
+    float hitz1_;
+    float hitx2_;
+    float hity2_;
+    float hitz2_;
+    float l1x3_;
+    float l1y3_;
+    float l1z3_;
+    float hitx3_;
+    float hity3_;
+    float hitz3_;
+    float l1x4_;
+    float l1y4_;
+    float l1z4_;
+    float hitx4_;
+    float hity4_;
+    float hitz4_;
+    int nHits_;
+
+  public:
+    ~seedL1TSOSTemplate() {}
+
+    void clearL1Hit_12() {
+      l1x1_ = -99999.;
+      l1y1_ = -99999.;
+      l1z1_ = -99999.;
+      l1x2_ = -99999.;
+      l1y2_ = -99999.;
+      l1z2_ = -99999.;
+      hitx1_ = -99999.;
+      hity1_ = -99999.;
+      hitz1_ = -99999.;
+      hitx2_ = -99999.;
+      hity2_ = -99999.;
+      hitz2_ = -99999.;
+      nHits_ = -99999;
+    }
+
+    void clearL1Hit_3() {
+      l1x3_ = -99999.;
+      l1y3_ = -99999.;
+      l1z3_ = -99999.;
+      hitx3_ = -99999.;
+      hity3_ = -99999.;
+      hitz3_ = -99999.;
+    }
+
+    void clearL1Hit_4() {
+      l1x4_ = -99999.;
+      l1y4_ = -99999.;
+      l1z4_ = -99999.;
+      hitx4_ = -99999.;
+      hity4_ = -99999.;
+      hitz4_ = -99999.;
+    }
+
+    void clear() {
+      clear_base();
+      clearL1Hit_12();
+      clearL1Hit_3();
+      clearL1Hit_4();
+    }
+
+    void setBranch_12(TTree* tmpntpl) {
+      tmpntpl->Branch("l1x1", &l1x1_, "l1x1/F");
+      tmpntpl->Branch("l1y1", &l1y1_, "l1y1/F");
+      tmpntpl->Branch("l1z1", &l1z1_, "l1z1/F");
+      tmpntpl->Branch("hitx1", &hitx1_, "hitx1/F");
+      tmpntpl->Branch("hity1", &hity1_, "hity1/F");
+      tmpntpl->Branch("hitz1", &hitz1_, "hitz1/F");
+      tmpntpl->Branch("l1x2", &l1x2_, "l1x2/F");
+      tmpntpl->Branch("l1y2", &l1y2_, "l1y2/F");
+      tmpntpl->Branch("l1z2", &l1z2_, "l1z2/F");
+      tmpntpl->Branch("hitx2", &hitx2_, "hitx2/F");
+      tmpntpl->Branch("hity2", &hity2_, "hity2/F");
+      tmpntpl->Branch("hitz2", &hitz2_, "hitz2/F");
+      tmpntpl->Branch("nHits", &nHits_, "nHits/I");
+    }
+
+    void setBranch_3(TTree* tmpntpl) {
+      tmpntpl->Branch("l1x3", &l1x3_, "l1x3/F");
+      tmpntpl->Branch("l1y3", &l1y3_, "l1y3/F");
+      tmpntpl->Branch("l1z3", &l1z3_, "l1z3/F");
+      tmpntpl->Branch("hitx3", &hitx3_, "hitx3/F");
+      tmpntpl->Branch("hity3", &hity3_, "hity3/F");
+      tmpntpl->Branch("hitz3", &hitz3_, "hitz3/F");
+    }
+
+    void setBranch_4(TTree* tmpntpl) {
+      tmpntpl->Branch("l1x4", &l1x4_, "l1x4/F");
+      tmpntpl->Branch("l1y4", &l1y4_, "l1y4/F");
+      tmpntpl->Branch("l1z4", &l1z4_, "l1z4/F");
+      tmpntpl->Branch("hitx4", &hitx4_, "hitx4/F");
+      tmpntpl->Branch("hity4", &hity4_, "hity4/F");
+      tmpntpl->Branch("hitz4", &hitz4_, "hitz4/F");
+    }
+
+    void setBranch(TTree* tmpntpl) {
+      setBranch_base(tmpntpl);
+      setBranch_12(tmpntpl);
+      setBranch_3(tmpntpl);
+      setBranch_4(tmpntpl);
+    }
+
+    void fill_12(pair<LayerHit, LayerTSOS> firstHit, pair<LayerHit, LayerTSOS> secondHit, int nHits) {
+      auto hit1   = firstHit.first.second;
+      auto tsos1  = firstHit.second.second;
+      l1x1_ = tsos1.globalPosition().x();
+      l1y1_ = tsos1.globalPosition().y();
+      l1z1_ = tsos1.globalPosition().z();
+      hitx1_ = hit1->globalPosition().x();
+      hity1_ = hit1->globalPosition().y();
+      hitz1_ = hit1->globalPosition().z();
+
+      auto hit2   = secondHit.first.second;
+      auto tsos2  = secondHit.second.second;
+
+      l1x2_ = tsos2.globalPosition().x();
+      l1y2_ = tsos2.globalPosition().y();
+      l1z2_ = tsos2.globalPosition().z();
+      hitx2_ = hit2->globalPosition().x();
+      hity2_ = hit2->globalPosition().y();
+      hitz2_ = hit2->globalPosition().z();
+
+      nHits_ = nHits;
+    }
+
+    void fill_3(pair<LayerHit, LayerTSOS> thirdHit) {
+      auto hit3   = thirdHit.first.second;
+      auto tsos3  = thirdHit.second.second;
+
+      l1x3_ = tsos3.globalPosition().x();
+      l1y3_ = tsos3.globalPosition().y();
+      l1z3_ = tsos3.globalPosition().z();
+      hitx3_ = hit3->globalPosition().x();
+      hity3_ = hit3->globalPosition().y();
+      hitz3_ = hit3->globalPosition().z();
+    }
+
+    void fill_4(pair<LayerHit, LayerTSOS> fourthHit) {
+      auto hit4   = fourthHit.first.second;
+      auto tsos4  = fourthHit.second.second;
+
+      l1x4_ = tsos4.globalPosition().x();
+      l1y4_ = tsos4.globalPosition().y();
+      l1z4_ = tsos4.globalPosition().z();
+      hitx4_ = hit4->globalPosition().x();
+      hity4_ = hit4->globalPosition().y();
+      hitz4_ = hit4->globalPosition().z();
+    }
+  };
+
+  seedL1TSOSTemplate* theSeeds;
+
+  void testRun(
+    const edm::Event &, const edm::EventSetup&,
+    edm::EDGetTokenT<TrajectorySeedCollection>&
+  );
+
+  vector< LayerTSOS > getTsosOnPixels(
+    const TTTrack<Ref_Phase2TrackerDigi_>&,
+    const edm::ESHandle<MagneticField>&,
+    const Propagator&,
+    const GeometricSearchTracker&
+  );
+
+  vector< pair<LayerHit, LayerTSOS> > getHitTsosPairs(
+    const TrajectorySeed&,
+    //edm::Handle< std::vector< TTTrack< Ref_Phase2TrackerDigi_ > > >,
+    const edm::Handle<l1t::TrackerMuonCollection>&,
+    const edm::ESHandle<MagneticField>&,
+    const Propagator&,
+    const GeometricSearchTracker&
   );
 };

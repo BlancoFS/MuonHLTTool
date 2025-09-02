@@ -1,0 +1,610 @@
+# -- custoimzer for ntupler that can be added to the HLT configuration for re-running HLT
+# -- add two lines in the HLT config.:
+# from MuonHLTTool.MuonHLTNtupler.customizerForMuonHLTNtupler import *
+# process = customizerFuncForMuonHLTNtupler(process, "MYHLT")
+
+import FWCore.ParameterSet.Config as cms
+# from RecoMuon.TrackerSeedGenerator.mvaScale import *
+
+from HLTrigger.Configuration.HLT_75e33.sequences.HLTTICLLocalRecoSequence_cfi import *
+
+from RecoMTD.TrackExtender.PropagatorWithMaterialForMTD_cfi import *
+from RecoMTD.TrackExtender.trackExtenderWithMTDBase_cfi import *
+from RecoMTD.TransientTrackingRecHit.MTDTransientTrackingRecHitBuilder_cfi import *
+from SimFastTiming.FastTimingCommon.mtdDigitizer_cfi import mtdDigitizer
+
+from TrackingTools.TrackFitters.KFTrajectoryFitter_cfi import *
+from TrackingTools.KalmanUpdators.Chi2MeasurementEstimator_cfi import *
+from TrackingTools.TrackFitters.KFTrajectorySmoother_cfi import *
+
+from TrackingTools.TrackRefitter.TracksToTrajectories_cff import *
+from RecoTracker.FinalTrackSelectors.TrackCollectionMerger_cfi import *
+from RecoTracker.FinalTrackSelectors.trackAlgoPriorityOrder_cfi import trackAlgoPriorityOrder
+
+from RecoMuon.TrackingTools.MuonServiceProxy_cff import *
+from RecoMuon.TrackingTools.MuonTrackLoader_cff import *
+from RecoMuon.TransientTrackingRecHit.MuonTransientTrackingRecHitBuilder_cfi import *
+
+# -- Std Transform -- #
+PU200_Barrel_NThltIter2FromL1_ScaleMean     = [0.00033113700731766336, 1.6825601468762878e-06, 1.790932122524803e-06, 0.010534608406382916, 0.005969459957330139, 0.0009605022254971113, 0.04384189672781466, 7.846741237608237e-05, 0.40725050850004824, 0.41125151617410227, 0.39815551065544846]
+PU200_Barrel_NThltIter2FromL1_ScaleStd      = [0.0006042948363798624, 2.445644111872427e-06, 3.454992543447134e-06, 0.09401581628887255, 0.7978806947573766, 0.4932933044535928, 0.04180518265631776, 0.058296511682094855, 0.4071857009373577, 0.41337782307392973, 0.4101160349549534]
+PU200_Endcap_NThltIter2FromL1_ScaleMean     = [0.00022658482374555603, 5.358921973784045e-07, 1.010003713549798e-06, 0.0007886873612224615, 0.001197730548842408, -0.0030252353426003594, 0.07151944804171254, -0.0006940626775109026, 0.20535152195939896, 0.2966816533783824, 0.28798220230180455]
+PU200_Endcap_NThltIter2FromL1_ScaleStd      = [0.0003857726789049956, 1.4853721474087994e-06, 6.982997036736564e-06, 0.04071340757666084, 0.5897606560095399, 0.33052121398064654, 0.05589386786541949, 0.08806273533388546, 0.3254586902665612, 0.3293354496231377, 0.3179899794578072]
+
+
+
+def customizeFuncForMuonPFIsolation(process, newProcessName = "MYHLT", useMTDTiming = False, useAllInputs = False):
+
+    #### Original IsoMu24 sequence
+
+    # HLT_IsoMu24_FromL1TkMuon = cms.Path(
+    #     HLTBeginSequence
+    #     . . . 
+    #     + HLTPfRecHitUnseededSequence ----------------------------
+    #     + HLTTICLLocalRecoSequence -------------------------------
+    #     + HLTFastJetForEgammaSequence ----------------------------
+    #     + HLTPfClusteringHBHEHFSequence --------------------------
+    #     + HLTPFClusteringForEgammaUnseededSequence ---------------
+    #     + hltPhase2L3MuonsEcalIsodR0p3dRVeto0p000
+    #     + hltPhase2L3MuonsHcalIsodR0p3dRVeto0p000
+    #     + hltPhase2L3MuonsHgcalLCIsodR0p2dRVetoEM0p00dRVetoHad0p02minEEM0p00minEHad0p00
+    #     + hltL3crIsoL1TkSingleMu22L3f24QL3pfecalIsoFiltered0p41
+    #     + hltL3crIsoL1TkSingleMu22L3f24QL3pfhcalIsoFiltered0p40
+    #     + hltL3crIsoL1TkSingleMu22L3f24QL3pfhgcalIsoFiltered4p70
+    #     + HLTPhase2L3MuonGeneralTracksSequence
+    #     + hltPhase2L3MuonsTrkIsoRegionalNewdR0p3dRVeto0p005dz0p25dr0p20ChisqInfPtMin0p0Cut0p07
+    #     + hltL3crIsoL1TkSingleMu22L3f24QL3trkIsoRegionalNewFiltered0p07EcalHcalHgcalTrk
+    #     + HLTEndSequence
+    # )
+
+    #### EGamma isolation sequences
+
+    # HLTEle32WPTightL1SeededSequence = cms.Sequence(
+    #     . . . 
+    #     +HLTEGammaDoLocalHcalSequence
+    #     +HLTFastJetForEgammaSequence
+    #     +hltEgammaEcalPFClusterIsoL1Seeded
+    #     +hltEle32WPTightEcalIsoL1SeededFilter
+    #     +hltEgammaHGCalLayerClusterIsoL1Seeded
+    #     +hltEle32WPTightHgcalIsoL1SeededFilter
+    #     +HLTPFHcalClusteringForEgammaSequence
+    #     +hltEgammaHcalPFClusterIsoL1Seeded
+    #     +hltEle32WPTightHcalIsoL1SeededFilter
+    #     +HLTElePixelMatchL1SeededSequence
+    #     +hltEle32WPTightPixelMatchL1SeededFilter
+    #     +hltEle32WPTightPMS2L1SeededFilter
+    #     +HLTGsfElectronL1SeededSequence
+    #     +hltEle32WPTightGsfOneOEMinusOneOPL1SeededFilter
+    #     +hltEle32WPTightGsfDetaL1SeededFilter
+    #     +hltEle32WPTightGsfDphiL1SeededFilter
+    #     +hltEle32WPTightBestGsfNLayerITL1SeededFilter
+    #     +hltEle32WPTightBestGsfChi2L1SeededFilter
+    #     +hltEgammaEleL1TrkIsoL1Seeded
+    #     +hltEle32WPTightGsfTrackIsoFromL1TracksL1SeededFilter
+    #     +HLTTrackingSequence
+    #     +hltEgammaEleGsfTrackIsoL1Seeded
+    #     +hltEle32WPTightGsfTrackIsoL1SeededFilter
+    # )
+
+    # ParticleFlow reconstruction sequence - Not used by EGamma
+
+    # HLTParticleFlowRecoSequence = cms.Sequence(
+    #     hltPfTrack
+    #     +hltParticleFlowBlock
+    #     +hltParticleFlowTmpBarrel
+    #     +hltParticleFlowTmp
+    #     +hltFixedGridRhoFastjetAll
+    # )
+
+    if useMTDTiming:
+        process.hltTiclCandidate.useMTDTiming = True
+        process.hltTiclTrackstersMerge.useMTDTiming = True
+        process.hltPfTICL.useMTDTiming = True
+        
+    
+    process.hltPhase2L3MuonsPFIsodR0p4 = cms.EDProducer("MuonHLTPFCandidateIsolationProducer",
+                                                        recoCandidateProducer = cms.InputTag("hltPhase2L3MuonCandidates"),
+                                                        pfCandidateProducer = cms.InputTag("hltParticleFlowTmp"),
+                                                        drMax = cms.double(0.4),
+                                                        drVeto = cms.double(0.01),
+                                                        drVetoCh = cms.double(0.0001),
+                                                        minEnergy = cms.double(0.0)
+    )
+
+    process.hltL3crIsoL1TkSingleMu22PFIso0p15 = cms.EDFilter("HLTMuonGenericFilter",
+                                                             absEtaLowEdges = cms.vdouble(0.0, 1.479),
+                                                             candTag = cms.InputTag("hltL3fL1TkSingleMu22L3Filtered24Q"),
+                                                             doRhoCorrection = cms.bool(False),
+                                                             effectiveAreas = cms.vdouble(0.0, 0.0),
+                                                             energyLowEdges = cms.vdouble(0.0),
+                                                             l1EGCand = cms.InputTag("hltPhase2L3MuonCandidates"),
+                                                             lessThan = cms.bool(True),
+                                                             ncandcut = cms.int32(1),
+                                                             rhoMax = cms.double(99999999.0),
+                                                             rhoScale = cms.double(1.0),
+                                                             rhoTag = cms.InputTag(""),
+                                                             saveTags = cms.bool(True),
+                                                             thrOverE2EB = cms.vdouble(-1.0),
+                                                             thrOverE2EE = cms.vdouble(-1.0),
+                                                             thrOverEEB = cms.vdouble(0.15),
+                                                             thrOverEEE = cms.vdouble(0.15),
+                                                             thrRegularEB = cms.vdouble(-1.0),
+                                                             thrRegularEE = cms.vdouble(-1.0),
+                                                             useEt = cms.bool(True),
+                                                             varTag = cms.InputTag("hltPhase2L3MuonsPFIsodR0p4")
+    )
+
+    if useAllInputs:
+        process.HLT_IsoMu24_FromL1TkMuon = cms.Path(
+            process.HLTBeginSequence
+            + process.hltSingleTkMuon22L1TkMuonFilter
+            + process.HLTRawToDigiSequence
+            + process.HLTItLocalRecoSequence
+            + process.HLTOtLocalRecoSequence
+            + process.hltPhase2PixelFitterByHelixProjections
+            + process.hltPhase2PixelTrackFilterByKinematics
+            + process.HLTTrackingSequence
+            + process.HLTMuonsSequence
+            + process.hltL3fL1TkSingleMu22L3Filtered24Q
+            #
+            + process.HLTLocalrecoSequence
+            + process.HLTTICLLocalRecoSequence
+            + process.HLTParticleFlowSequence
+            #+ process.hltPhase2L3MuonsPFIsodR0p4
+            #
+            + process.HLTDoFullUnpackingEgammaEcalSequence
+            + process.HLTPfRecHitUnseededSequence
+            + process.HLTFastJetForEgammaSequence
+            + process.HLTPfClusteringHBHEHFSequence
+            + process.HLTPFClusteringForEgammaUnseededSequence
+            + process.HLTPhase2L3MuonGeneralTracksSequence
+            #
+            #+ process.hltL3crIsoL1TkSingleMu22PFIso0p15
+            #
+            #+ process.hltPhase2L3MuonsEcalIsodR0p3dRVeto0p000
+            #+ process.hltPhase2L3MuonsHcalIsodR0p3dRVeto0p000
+            #+ process.hltPhase2L3MuonsHgcalLCIsodR0p2dRVetoEM0p00dRVetoHad0p02minEEM0p00minEHad0p00 
+            #+ process.hltL3crIsoL1TkSingleMu22L3f24QL3pfecalIsoFiltered0p41
+            #+ process.hltL3crIsoL1TkSingleMu22L3f24QL3pfhcalIsoFiltered0p40 
+            #+ process.hltL3crIsoL1TkSingleMu22L3f24QL3pfhgcalIsoFiltered4p70
+            #+ process.hltPhase2L3MuonsTrkIsoRegionalNewdR0p3dRVeto0p005dz0p25dr0p20ChisqInfPtMin0p0Cut0p07 
+            #+ process.hltL3crIsoL1TkSingleMu22L3f24QL3trkIsoRegionalNewFiltered0p07EcalHcalHgcalTrk
+            + process.HLTEndSequence
+        )
+    else:
+        process.HLT_IsoMu24_FromL1TkMuon = cms.Path(
+            process.HLTBeginSequence
+            + process.hltSingleTkMuon22L1TkMuonFilter
+            + process.HLTRawToDigiSequence
+            + process.HLTItLocalRecoSequence
+            + process.HLTOtLocalRecoSequence
+            + process.hltPhase2PixelFitterByHelixProjections
+            + process.hltPhase2PixelTrackFilterByKinematics
+            + process.HLTTrackingSequence
+            + process.HLTMuonsSequence
+            + process.hltL3fL1TkSingleMu22L3Filtered24Q
+            #
+            + process.HLTLocalrecoSequence
+            + process.HLTTICLLocalRecoSequence
+            + process.HLTParticleFlowSequence
+            + process.hltPhase2L3MuonsPFIsodR0p4
+            + process.hltL3crIsoL1TkSingleMu22PFIso0p15
+            #
+            + process.HLTEndSequence
+        )
+
+        
+    return process
+
+
+
+def customizerFuncForMuonGeneralTrackerExtender(process, doMuon = True, newProcessName = "MYHLT"):
+    
+    process.Chi2EstimatorForRefit = Chi2MeasurementEstimator.clone(
+        ComponentName = 'Chi2EstimatorForRefit',
+        MaxChi2 = 100000.0,
+        nSigma = 3.0
+    )
+    
+    process.KFFitterForRefitInsideOut = KFTrajectoryFitter.clone(
+        ComponentName = 'KFFitterForRefitInsideOut',
+        Propagator = 'SmartPropagatorAnyRK',
+        Updator = 'KFUpdator',
+        Estimator = 'Chi2EstimatorForRefit',
+        minHits = 3
+    )
+
+    process.KFSmootherForRefitInsideOut = KFTrajectorySmoother.clone(
+        ComponentName = 'KFSmootherForRefitInsideOut',
+        Propagator = 'SmartPropagatorAnyRK',
+        Updator = 'KFUpdator',
+        Estimator = 'Chi2EstimatorForRefit',
+        errorRescaling = 100.0,
+        minHits = 3
+    )
+    
+    process.hltPhase2L3MuonMtdUncalibratedRecHits = cms.EDProducer(
+        "MTDUncalibratedRecHitProducer",
+        barrel = cms.PSet(
+            algoName = cms.string("BTLUncalibRecHitAlgo"),
+            adcNbits = mtdDigitizer.barrelDigitizer.ElectronicsSimulation.adcNbits,
+            adcSaturation = mtdDigitizer.barrelDigitizer.ElectronicsSimulation.adcSaturation_MIP,
+            toaLSB_ns = mtdDigitizer.barrelDigitizer.ElectronicsSimulation.toaLSB_ns,
+            timeResolutionInNs = cms.string("0.308*pow(x,-0.4175)"), # [ns]
+            timeCorr_p0 = cms.double( 2.21103),
+            timeCorr_p1 = cms.double(-0.933552),
+            timeCorr_p2 = cms.double( 0.),
+            c_LYSO = cms.double(13.846235)     # in unit cm/ns
+        ),
+        endcap = cms.PSet(
+            algoName      = cms.string("ETLUncalibRecHitAlgo"),
+            adcNbits      = mtdDigitizer.endcapDigitizer.ElectronicsSimulation.adcNbits,
+            adcSaturation = mtdDigitizer.endcapDigitizer.ElectronicsSimulation.adcSaturation_MIP,
+            toaLSB_ns     = mtdDigitizer.endcapDigitizer.ElectronicsSimulation.toaLSB_ns,
+            tofDelay      = mtdDigitizer.endcapDigitizer.DeviceSimulation.tofDelay,
+            timeResolutionInNs = cms.string("0.0370"), # [ns]
+            timeCorr_p0 = cms.double(0.974683),
+            timeCorr_p1 = cms.double(-0.237274),
+            timeCorr_p2 = cms.double(0.021455),
+            timeCorr_p3 = cms.double(-0.000727429)
+        ),
+        barrelDigis = cms.InputTag('mix:FTLBarrel'),
+        endcapDigis = cms.InputTag('mix:FTLEndcap'),
+        BarrelHitsName = cms.string('FTLBarrel'),
+        EndcapHitsName = cms.string('FTLEndcap')
+    )
+    
+    process.hltPhase2L3MuonMtdRecHits = cms.EDProducer(
+        "MTDRecHitProducer", # MTDRecHitProducer
+        barrel = cms.PSet(
+            algoName = cms.string("MTDRecHitAlgo"),
+            thresholdToKeep = cms.double(1.),          # MeV
+            calibrationConstant = cms.double(0.03125), # MeV/pC
+        ),
+        endcap = cms.PSet(
+            algoName = cms.string("MTDRecHitAlgo"),
+            thresholdToKeep = cms.double(0.0425),    # MeV
+            calibrationConstant = cms.double(0.085), # MeV/MIP
+        ),
+        barrelUncalibratedRecHits = cms.InputTag('hltPhase2L3MuonMtdUncalibratedRecHits:FTLBarrel'),
+        endcapUncalibratedRecHits = cms.InputTag('hltPhase2L3MuonMtdUncalibratedRecHits:FTLEndcap'),
+        BarrelHitsName = cms.string('FTLBarrel'),
+        EndcapHitsName = cms.string('FTLEndcap'),
+    )
+
+    process.hltPhase2L3MuonMTDClusters = cms.EDProducer(
+        "MTDClusterProducer",
+        srcBarrel = cms.InputTag("hltPhase2L3MuonMtdRecHits:FTLBarrel"),
+        srcEndcap = cms.InputTag("hltPhase2L3MuonMtdRecHits:FTLEndcap"),        
+        BarrelClusterName = cms.string("FTLBarrel"),
+        EndcapClusterName = cms.string("FTLEndcap"),
+        ClusterMode = cms.string("MTDThresholdClusterizer"),
+    )
+    
+    process.hltPhase2L3MuonMTDRecHits = cms.EDProducer(
+        "MTDTrackingRecHitProducer",
+        barrelClusters = cms.InputTag("hltPhase2L3MuonMTDClusters:FTLBarrel"),
+        endcapClusters = cms.InputTag("hltPhase2L3MuonMTDClusters:FTLEndcap"),
+    )    
+    
+    ### Prepare generalTracks - redefine to access trajectories
+    process.hltPhase2L3MuonInitialStepTracks.TrajectoryInEvent = True
+    process.hltPhase2L3MuonHighPtTripletStepTracks.TrajectoryInEvent = True
+    process.hltPhase2L3MuonInitialStepTracksSelectionHighPurity.copyTrajectories = True
+    process.hltPhase2L3MuonHighPtTripletStepTracksSelectionHighPurity.copyTrajectories = True
+    
+    process.hltPhase2L3MuonGeneralTracks = TrackCollectionMerger.clone(
+        trackProducers   = ["hltPhase2L3MuonInitialStepTracks", "hltPhase2L3MuonHighPtTripletStepTracks"],
+        inputClassifiers = ["hltPhase2L3MuonInitialStepTrackCutClassifier", "hltPhase2L3MuonHighPtTripletStepTrackCutClassifier"],
+        foundHitBonus  = 100.0,
+        lostHitPenalty =   1.0,
+        minQuality = cms.string('highPurity'),
+        copyExtras = cms.untracked.bool(True),
+        copyTrajectories = cms.untracked.bool(True),
+    )
+
+    process.hltPhase2GeneralTracksMTDTExtendedVtx = cms.EDProducer(
+        "TrackExtenderWithMTD",
+        tracksSrc = cms.InputTag("hltPhase2L3MuonGeneralTracks"),
+	trjtrkAssSrc = cms.InputTag("hltPhase2L3MuonGeneralTracks"),
+        hitsSrc = cms.InputTag("hltPhase2L3MuonMTDRecHits"),	
+        beamSpotSrc = cms.InputTag("hltOnlineBeamSpot"),
+	genVtxPositionSrc = cms.InputTag(""),
+        genVtxTimeSrc = cms.InputTag(""),
+        vtxSrc = cms.InputTag("hltPhase2L3MuonPixelVertices"),
+        updateTrackTrajectory = cms.bool(True),
+        updateTrackExtra = cms.bool(True),
+        updateTrackHitPattern = cms.bool(True),
+        TransientTrackBuilder = cms.string("TransientTrackBuilder"),
+        MTDRecHitBuilder = cms.string("MTDRecHitBuilder"),
+        Propagator = cms.string("PropagatorWithMaterialForMTD"),
+        TrackTransformer = cms.PSet(
+            DoPredictionsOnly = cms.bool(False),
+            Fitter = cms.string("KFFitterForRefitInsideOut"),
+            Smoother = cms.string("KFSmootherForRefitInsideOut"),
+            Propagator = cms.string("PropagatorWithMaterialForMTD"),
+            RefitDirection = cms.string("alongMomentum"),
+            RefitRPCHits = cms.bool(True),
+            TrackerRecHitBuilder = cms.string("WithTrackAngle"),
+            MuonRecHitBuilder = cms.string("MuonRecHitBuilder"),
+            MTDRecHitBuilder = cms.string("MTDRecHitBuilder"),
+        ),
+        estimatorMaxChi2 = cms.double(500.),
+        estimatorMaxNSigma = cms.double(10.),
+        btlChi2Cut = cms.double(50.),
+        btlTimeChi2Cut = cms.double(10.),
+        etlChi2Cut = cms.double(50.),
+        etlTimeChi2Cut = cms.double(10.),
+        useVertex = cms.bool(True),
+        useSimVertex = cms.bool(False),
+        dZCut = cms.double(0.1),
+        bsTimeSpread = cms.double(0.2),
+    )
+
+    process.hltPhase2GeneralTracksMTDExtendedVtxMVATrackQuality = cms.EDProducer(
+        "MTDTrackQualityMVAProducer",
+        tracksSrc = cms.InputTag("hltPhase2L3MuonGeneralTracks"),
+        btlMatchChi2Src = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:btlMatchChi2"),
+        btlMatchTimeChi2Src = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:btlMatchTimeChi2"),
+        etlMatchChi2Src = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:etlMatchChi2"),
+        etlMatchTimeChi2Src = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:etlMatchTimeChi2"),
+        mtdTimeSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTracktmtd"),
+        pathLengthSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackPathLength"),
+        npixBarrelSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:npixBarrel"),
+        npixEndcapSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:npixEndcap"),
+        qualityBDT_weights_file = cms.FileInPath("RecoMTD/TimingIDTools/data/clf4D_MTDquality_bo.xml"),
+    )
+    
+    process.hltPhase2GeneralTracksMTDTExtendedVtxTof = cms.EDProducer(
+        "TOFPIDProducer",
+        tracksSrc = cms.InputTag("hltPhase2L3MuonGeneralTracks"),
+        t0Src = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackt0"),
+        tmtdSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTracktmtd"),
+        sigmat0Src = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTracksigmat0"),
+        sigmatmtdSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTracksigmatmtd"),
+        tofkSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackTofK"),
+        tofpSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackTofP"),
+        sigmatofpiSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackSigmaTofPi"),
+        sigmatofkSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackSigmaTofK"),
+        sigmatofpSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackSigmaTofP"),
+        vtxsSrc = cms.InputTag("hltPhase2L3MuonPixelVertices"),
+        trackMTDTimeQualityVMapTag = cms.InputTag("hltPhase2GeneralTracksMTDExtendedVtxMVATrackQuality:mtdQualMVA"),
+        vtxMaxSigmaT = cms.double(0.025),
+        maxDz = cms.double(0.1),
+        maxDtSignificance = cms.double(5.0),
+        minProbHeavy = cms.double(0.75),
+        fixedT0Error = cms.double(0.),
+        probPion = cms.double(1.),
+        probKaon = cms.double(1.),
+        probProton = cms.double(1.),
+        minTrackTimeQuality = cms.double(0.8),
+        MVASel = cms.bool( False ),
+        vertexReassignment = cms.bool( True )
+    )
+    
+    if doMuon:
+
+        #process.hltPhase2L3MuonInitialStepTracks.TrajectoryInEvent = True
+        #process.hltPhase2L3MuonHighPtTripletStepTracks.TrajectoryInEvent = True
+        #process.hltPhase2L3MuonInitialStepTracksSelectionHighPurity.copyTrajectories = True
+        #process.hltPhase2L3MuonHighPtTripletStepTracksSelectionHighPurity.copyTrajectories = True
+        
+        #process.hltPhase2L3MuonMerged = TrackCollectionMerger.clone(
+        #    trackProducers   = ["hltPhase2L3OIMuonTrack", "hltPhase2L3MuonFilter"],
+        #    inputClassifiers = ["hltPhase2L3OIMuonTrackCutClassifier", "hltPhase2L3MuonFilter:L3IOTracksFiltered"],
+        #    foundHitBonus  = 100.0,
+        #    lostHitPenalty =   1.0,
+        #    minQuality = cms.string('highPurity'),
+        #    copyExtras = cms.untracked.bool(True),
+        #    copyTrajectories = cms.untracked.bool(True),
+        #    trackAlgoPriorityOrder = cms.string("hltESPTrackAlgoPriorityOrder"),
+        #    setsToMerge = cms.VPSet(cms.PSet(pQual = cms.bool(False), tLists = cms.vint32(0, 1))),
+        #)
+        
+        #process.hltPhase2L3GlbMuon
+        #process.hltPhase2L3MuonMerged.copyTrajectories = True
+        #process.hltPhase2L3MuonsNoID.copyTrajectories = True
+        #process.hltPhase2L3Muons.copyTrajectories = True
+
+
+        
+        process.hltPhase2L3OIMuCtfWithMaterialTracks.TrajectoryInEvent = True
+        process.hltPhase2L3OIMuonTrackSelectionHighPurity.copyTrajectories = True
+
+        process.hltIter0Phase2L3FromL1TkMuonCtfWithMaterialTracks.TrajectoryInEvent = True
+        process.hltIter0Phase2L3FromL1TkMuonTrackSelectionHighPurity.copyTrajectories = True
+
+        process.hltIter2Phase2L3FromL1TkMuonCtfWithMaterialTracks.TrajectoryInEvent = True
+        process.hltIter2Phase2L3FromL1TkMuonTrackSelectionHighPurity.copyTrajectories = True
+
+        # replace TrackListMerger by TrackCollectionMerger
+
+        process.hltIter2Phase2L3FromL1TkMuonMerged = TrackCollectionMerger.clone(
+            trackProducers   = ["hltIter0Phase2L3FromL1TkMuonCtfWithMaterialTracks", "hltIter2Phase2L3FromL1TkMuonCtfWithMaterialTracks"],
+            inputClassifiers = ["hltIter0Phase2L3FromL1TkMuonTrackCutClassifier", "hltIter2Phase2L3FromL1TkMuonTrackCutClassifier"],
+            foundHitBonus  = 100.0,
+            lostHitPenalty =   1.0,
+            minQuality = cms.string('highPurity'),
+            copyExtras = cms.untracked.bool(True),
+            copyTrajectories = cms.untracked.bool(True),
+        )
+
+        #process.hltPhase2L3MuonFilter.copyTrajectories = True
+
+        process.hltPhase2L3MuonFilter = cms.EDProducer("Phase2HLTMuonSelectorForL3",
+                                                       l1TkMuons = cms.InputTag("l1tTkMuonsGmt"),
+                                                       l2MuonsUpdVtx = cms.InputTag("hltL2MuonsFromL1TkMuon:UpdatedAtVtx"),
+                                                       l3Tracks = cms.InputTag("hltIter2Phase2L3FromL1TkMuonMerged"),
+                                                       IOFirst = cms.bool(True),
+                                                       matchingDr = cms.double(0.02),
+                                                       applyL3Filters = cms.bool(True),
+                                                       MinNhits = cms.int32(1),
+                                                       MaxNormalizedChi2 = cms.double(5.0),
+                                                       MinNhitsMuons = cms.int32(0),
+                                                       MinNhitsPixel = cms.int32(1),
+                                                       MinNhitsTracker = cms.int32(6),
+                                                       MaxPtDifference = cms.double(999.0),
+                                                       copyTrajectories = cms.bool(True)
+        )
+                
+        ##### Input collections
+        #
+        # --------- hltPhase2L3MuonFilter = Filter(hltIter2Phase2L3FromL1TkMuonMerged) = Filter( [hltIter0Phase2L3FromL1TkMuonTrackSelectionHighPurity, hltIter2Phase2L3FromL1TkMuonTrackSelectionHighPurity] )
+        #
+        # hltIter0Phase2L3FromL1TkMuonTrackSelectionHighPurity - working
+        # hltIter2Phase2L3FromL1TkMuonTrackSelectionHighPurity - working
+        #
+        # hltIter2Phase2L3FromL1TkMuonMerged - working
+        #
+        # --------- hltPhase2L3MuonMerged = [hltPhase2L3OIMuonTrackSelectionHighPurity, hltPhase2L3MuonFilter:L3IOTracksFiltered]
+        #
+        # hltPhase2L3OIMuonTrackSelectionHighPurity - working with copyTrajectories
+        #
+        #
+        # hltPhase2L3MuonMerged - working
+        # hltPhase2L3GlbMuon - working
+        # hltL2MuonsFromL1TkMuon - working (without :UpdatedAtVtx)
+        #
+        #
+        # All combined in hltPhase2L3MuonsNoID
+        
+        process.hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx = cms.EDProducer(
+            "TrackExtenderWithMTD",
+            tracksSrc = cms.InputTag("hltPhase2L3MuonMerged"),
+            trjtrkAssSrc = cms.InputTag("hltPhase2L3MuonMerged"),
+            hitsSrc = cms.InputTag("hltPhase2L3MuonMTDRecHits"),
+            beamSpotSrc = cms.InputTag("hltOnlineBeamSpot"),
+            genVtxPositionSrc = cms.InputTag(""),
+            genVtxTimeSrc = cms.InputTag(""),
+            vtxSrc = cms.InputTag("hltPhase2L3MuonPixelVertices"),
+            updateTrackTrajectory = cms.bool(True),
+            updateTrackExtra = cms.bool(True),
+            updateTrackHitPattern = cms.bool(True),
+            TransientTrackBuilder = cms.string("TransientTrackBuilder"),
+            MTDRecHitBuilder = cms.string("MTDRecHitBuilder"),
+            Propagator = cms.string("PropagatorWithMaterialForMTD"),
+            TrackTransformer = cms.PSet(
+                DoPredictionsOnly = cms.bool(False),
+                Fitter = cms.string("KFFitterForRefitInsideOut"),
+                Smoother = cms.string("KFSmootherForRefitInsideOut"),
+                Propagator = cms.string("PropagatorWithMaterialForMTD"),
+                RefitDirection = cms.string("alongMomentum"),
+                RefitRPCHits = cms.bool(True),
+                TrackerRecHitBuilder = cms.string("WithTrackAngle"),
+                MuonRecHitBuilder = cms.string("MuonRecHitBuilder"),
+                MTDRecHitBuilder = cms.string("MTDRecHitBuilder"),
+            ),
+            estimatorMaxChi2 = cms.double(500.),
+            estimatorMaxNSigma = cms.double(10.),
+            btlChi2Cut = cms.double(50.),
+            btlTimeChi2Cut = cms.double(10.),
+            etlChi2Cut = cms.double(50.),
+            etlTimeChi2Cut = cms.double(10.),
+            useVertex = cms.bool(True),
+            useSimVertex = cms.bool(False),
+            dZCut = cms.double(0.1),
+            bsTimeSpread = cms.double(0.2),
+            doMuon = cms.bool(True),
+        )
+
+        """
+        process.hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx = cms.EDProducer(
+            #"MuonExtenderWithMTD",
+            "TrackExtenderWithMTD",
+            muonsSrc = cms.InputTag("hltPhase2L3GlbMuon"), # hltPhase2L3MuonCandidates
+            trjMuonAssSrc = cms.InputTag("hltPhase2L3GlbMuon"),
+            hitsSrc = cms.InputTag("hltPhase2L3MuonMTDRecHits"),
+            beamSpotSrc = cms.InputTag("hltOnlineBeamSpot"),
+            genVtxPositionSrc = cms.InputTag(""),
+            genVtxTimeSrc = cms.InputTag(""),
+            vtxSrc = cms.InputTag("hltPhase2L3MuonPixelVertices"),
+            updateTrackTrajectory = cms.bool(True),
+            updateTrackExtra = cms.bool(True),
+            updateTrackHitPattern = cms.bool(True),
+            TransientTrackBuilder = cms.string("TransientTrackBuilder"),
+            MTDRecHitBuilder = cms.string("MTDRecHitBuilder"),
+            Propagator = cms.string("PropagatorWithMaterialForMTD"),
+            TrackTransformer = cms.PSet(
+                DoPredictionsOnly = cms.bool(False),
+                Fitter = cms.string("KFFitterForRefitInsideOut"),
+                Smoother = cms.string("KFSmootherForRefitInsideOut"),
+                Propagator = cms.string("PropagatorWithMaterialForMTD"),
+                RefitDirection = cms.string("alongMomentum"),
+                RefitRPCHits = cms.bool(True),
+                TrackerRecHitBuilder = cms.string("WithTrackAngle"),
+                MuonRecHitBuilder = cms.string("MuonRecHitBuilder"),
+                MTDRecHitBuilder = cms.string("MTDRecHitBuilder"),
+            ),
+            estimatorMaxChi2 = cms.double(500.),
+            estimatorMaxNSigma = cms.double(10.),
+            btlChi2Cut = cms.double(50.),
+            btlTimeChi2Cut = cms.double(10.),
+            etlChi2Cut = cms.double(50.),
+            etlTimeChi2Cut = cms.double(10.),
+            useVertex = cms.bool(True),
+            useSimVertex = cms.bool(False),
+            dZCut = cms.double(0.1),
+            bsTimeSpread = cms.double(0.2),
+        )
+        """
+    
+        ###### Further extension to run tofPID
+        #
+        #process.hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtxMVATrackQuality = cms.EDProducer(
+        #    "MTDTrackQualityMVAProducer",
+        #    tracksSrc = cms.InputTag("hltPhase2L3GlbMuon"),
+        #    btlMatchChi2Src = cms.InputTag("hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx:btlMatchChi2"),
+        #    btlMatchTimeChi2Src = cms.InputTag("hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx:btlMatchTimeChi2"),
+        #    etlMatchChi2Src = cms.InputTag("hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx:etlMatchChi2"),
+        #    etlMatchTimeChi2Src = cms.InputTag("hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx:etlMatchTimeChi2"),
+        #    mtdTimeSrc = cms.InputTag("hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx:generalTracktmtd"),
+        #    pathLengthSrc = cms.InputTag("hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx:generalTrackPathLength"),
+        #    npixBarrelSrc = cms.InputTag("hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx:npixBarrel"),
+        #    npixEndcapSrc = cms.InputTag("hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx:npixEndcap"),
+        #    qualityBDT_weights_file = cms.FileInPath("RecoMTD/TimingIDTools/data/clf4D_MTDquality_bo.xml"),
+        #)
+        
+
+    from SimFastTiming.MtdAssociatorProducers.mtdSimLayerClusterToTPAssociationDefault_cfi import mtdSimLayerClusterToTPAssociationDefault as _mtdSimLayerClusterToTPAssociationDefault
+    mtdSimLayerClusterToTPAssociation = _mtdSimLayerClusterToTPAssociationDefault.clone()
+    from Configuration.ProcessModifiers.premix_stage2_cff import premix_stage2
+    premix_stage2.toModify(mtdSimLayerClusterToTPAssociation, mtdSimClustersTag = "mixData:MergedMtdTruthLC")
+    premix_stage2.toModify(mtdSimLayerClusterToTPAssociation, trackingParticlesTag = "mixData:MergedTrackTruth")
+
+    from SimFastTiming.MtdAssociatorProducers.mtdRecoClusterToSimLayerClusterAssociationDefault_cfi import mtdRecoClusterToSimLayerClusterAssociationDefault as _mtdRecoClusterToSimLayerClusterAssociationDefault
+    mtdRecoClusterToSimLayerClusterAssociation = _mtdRecoClusterToSimLayerClusterAssociationDefault.clone()
+    from Configuration.ProcessModifiers.premix_stage2_cff import premix_stage2
+    premix_stage2.toModify(mtdRecoClusterToSimLayerClusterAssociation, mtdSimClustersTag = "mixData:MergedMtdTruthLC")
+
+    if doMuon:
+        replaceWith = (
+            process.hltPhase2L3MuonMtdUncalibratedRecHits+
+            process.hltPhase2L3MuonMtdRecHits+
+            process.hltPhase2L3MuonMTDClusters+
+            process.hltPhase2L3MuonMTDRecHits+
+            process.hltPhase2GeneralTracksMTDTExtendedVtx+
+            process.hltPhase2GeneralTracksMTDExtendedVtxMVATrackQuality+
+            process.hltPhase2GeneralTracksMTDTExtendedVtxTof+
+            # Muon 
+            process.hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx
+            # process.hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtxMVATrackQuality
+        )
+    else:
+        replaceWith = (
+            process.hltPhase2L3MuonMtdUncalibratedRecHits+
+            process.hltPhase2L3MuonMtdRecHits+
+            process.hltPhase2L3MuonMTDClusters+
+            process.hltPhase2L3MuonMTDRecHits+
+            process.hltPhase2GeneralTracksMTDTExtendedVtx+
+            process.hltPhase2GeneralTracksMTDExtendedVtxMVATrackQuality+
+            process.hltPhase2GeneralTracksMTDTExtendedVtxTof
+        )
+
+    #process.HLTPhase2L3MuonGeneralTracksSequence.remove(process.hltPhase2L3MuonHighPtTripletStepTracksSelectionHighPurity)
+    #process.HLTPhase2L3MuonGeneralTracksSequence.remove(process.hltPhase2L3MuonInitialStepTracksSelectionHighPurity)
+    
+    process.HLTPhase2L3MuonGeneralTracksSequence += replaceWith
+    
+    return process
+      
+    
