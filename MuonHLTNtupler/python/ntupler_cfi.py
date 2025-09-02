@@ -2,7 +2,7 @@ import FWCore.ParameterSet.Config as cms
 
 ntuplerBase = cms.EDAnalyzer("MuonHLTNtupler",
                              
-                             inputMuonCollection = cms.InputTag( "hltPhase2L3MuonCandidates", "", "MYHLT"),                            
+                             inputMuonCollection = cms.InputTag( "hltPhase2L3MuonCandidates", "", "MYHLT"),
                              inputMuonFilterCollection = cms.InputTag( "hltL3fL1TkSingleMu22L3Filtered24Q", "", "MYHLT"),
 
                              #muontrkAssSrc  = cms.InputTag("hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx", "", "MYHLT"),
@@ -25,81 +25,13 @@ ntuplerBase = cms.EDAnalyzer("MuonHLTNtupler",
                              muonTrackTofMu = cms.InputTag("hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx:generalTrackTofMu"),
                              muonTrackSigmaTofMu = cms.InputTag("hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx:generalTrackSigmaTofMu"),
                              
-                             pfClusterProducer_ecal = cms.untracked.InputTag( "hltParticleFlowClusterECALUnseeded", "", "MYHLT"),
-
-                             rho_ECAL = cms.untracked.InputTag("hltFixedGridRhoFastjetAllCaloForEGamma", "", "MYHLT"),
-                             drMax_ECAL = cms.double( 0.3 ),
-                             drVetoBarrel_ECAL = cms.double( 0.05 ),
-                             drVetoEndcap_ECAL = cms.double( 0.05 ),
-                             etaStripBarrel_ECAL = cms.double( 0.0 ),
-                             etaStripEndcap_ECAL = cms.double( 0.0 ),
-                             energyBarrel_ECAL = cms.double( 0.0 ),
-                             energyEndcap_ECAL = cms.double( 0.0 ),
+                             # PF candidates
                              
-                             pfClusterProducerHCAL = cms.untracked.InputTag( "hltParticleFlowClusterHCAL", "", "MYHLT"),
-
-                             rho_HCAL = cms.untracked.InputTag("hltFixedGridRhoFastjetAllCaloForEGamma", "", "MYHLT"),
-                             drMax_HCAL = cms.double( 0.3 ),
-                             drVetoBarrel_HCAL = cms.double( 0.1 ),
-                             drVetoEndcap_HCAL = cms.double( 0.1 ),
-                             etaStripBarrel_HCAL = cms.double( 0.0 ),
-                             etaStripEndcap_HCAL = cms.double( 0.0 ),
-                             energyBarrel_HCAL = cms.double( 0.0 ),
-                             energyEndcap_HCAL = cms.double( 0.0 ),
-                             
-                             layerClusterProducer_HGCAL = cms.untracked.InputTag( "hltHgcalMergeLayerClusters", "", "MYHLT"),
-                             hgcalLayerClustersTime = cms.untracked.InputTag( "hltHgcalMergeLayerClusters:timeLayerCluster", "", "MYHLT"),
-
-                             drVetoHad_HGCAL = cms.double(0.02),
-                             drVetoEM_HGCAL = cms.double(0.0),
-                             drMax_HGCAL = cms.double(0.2),
-
-                             inputTrackCollection = cms.untracked.InputTag( "hltPhase2L3MuonGeneralTracks", "", "MYHLT"), # hltPhase2L3MuonGeneralTracksMTDTExtendedVtx
-                             #trackAssocSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx"), # hltPhase2L3MuonGeneralTracks?
-
-                             ### From TrackMTDExtender
-                             t0Src = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackt0"),
-                             tmtdSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTracktmtd"),
-                             sigmat0Src = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTracksigmat0"),
-                             sigmatmtdSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTracksigmatmtd"),
-                             tofPiSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackTofPi"),
-                             tofKSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackTofK"),
-                             tofPSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackTofP"),
-                             sigmatofpiSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackSigmaTofPi"),
-                             sigmatofkSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackSigmaTofK"),
-                             sigmatofpSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackSigmaTofP"),
-                             btlMatchChi2Src = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:btlMatchChi2"),
-                             etlMatchChi2Src = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:etlMatchChi2"),
-                             btlMatchTimeChi2Src = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:btlMatchTimeChi2"),
-                             etlMatchTimeChi2Src = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:etlMatchTimeChi2"),
-                             npixBarrelSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:npixBarrel"),
-                             npixEndcapSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:npixEndcap"),
-                             trackOutermostHitPositionSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackOutermostHitPosition"),
-                             trackpSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackp"),
-                             trackBetaSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackBeta"),
-                             trackPathLengthSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackPathLength"),
-                             trackmtdposSrc = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtx:generalTrackmtdpos"),
-                             
-                             # From TofProducer
-                             t0PID = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtxTof:t0"),
-                             t0SafePID = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtxTof:t0safe"),
-                             sigmat0SafePID = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtxTof:sigmat0safe"),
-                             probPi = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtxTof:probPi"),
-                             probK = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtxTof:probK"),
-                             probP = cms.InputTag("hltPhase2GeneralTracksMTDTExtendedVtxTof:probP"),
-
-                            # From MTDTrackQualityProducer
-                                                            
-                             trackMVAQual = cms.InputTag("hltPhase2GeneralTracksMTDExtendedVtxMVATrackQuality:mtdQualMVA"),
-
-                             Diff_r = cms.double( 0.1 ),
-                             Diff_z = cms.double( 0.2 ),
-                             DR_Max = cms.double( 0.3 ),
-                             DR_Veto = cms.double( 0.01 ),
-                             NHits_Min = cms.uint32( 0 ),
-                             Chi2Ndof_Max = cms.double( 1.0E64 ),
-                             Chi2Prob_Min = cms.double( -1.0 ),
-                             Pt_Min = cms.double( -1.0 ),
+                             pfCandidateProducer = cms.InputTag("hltParticleFlowTmp"),
+                             drMaxPF = cms.double(0.4),
+                             drVetoPF = cms.double(0.01),
+                             drVetoPFCh = cms.double(0.0001),
+                             minEnergyPF = cms.double(0.0),
                              
 	                     # -- information stored in edm file
 	                     triggerResults    = cms.untracked.InputTag("TriggerResults::MYHLT"),

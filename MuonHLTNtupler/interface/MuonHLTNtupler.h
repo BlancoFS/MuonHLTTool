@@ -157,11 +157,8 @@ private:
   void Fill_HLTMuon(const edm::Event &iEvent);
   void Fill_L1Muon(const edm::Event &iEvent);
   void Fill_GenParticle(const edm::Event &iEvent);
-  void Fill_ECAL(const edm::Event &iEvent, const edm::EventSetup &iSetup);
-  void Fill_HCAL(const edm::Event &iEvent, const edm::EventSetup &iSetup);
-  void Fill_HGCAL(const edm::Event &iEvent, const edm::EventSetup &iSetup);
-  void Fill_Track(const edm::Event &iEvent, const edm::EventSetup &iSetup);
-
+  void Fill_PFCand(const edm::Event &iEvent, const edm::EventSetup &iSetup);
+  
   bool computedRVeto(RecoChargedCandidateRef candRef, reco::PFClusterRef pfclu, double drMAX, double drVeto2_);
   
   //For Rerun (Fill_IterL3*)
@@ -254,85 +251,14 @@ private:
   const edm::EDGetTokenT<edm::ValueMap<float>> muonTracksigmatmtdToken_;
   const edm::EDGetTokenT<edm::ValueMap<GlobalPoint>> muonTrackmtdposToken_;
   const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackTofMuToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackSigmaTofMuToken_;
-  
-  // Custom for isolation ----
-  
-  const edm::EDGetTokenT<reco::PFClusterCollection> pfClusterProducer_ecal_;
-  const edm::EDGetTokenT<double> t_rho_ECAL_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> muonTrackSigmaTofMuToken_;  
 
-  const double drMax_ECAL_;
-  const double drVetoBarrel_ECAL_;
-  const double drVetoEndcap_ECAL_;
-  const double etaStripBarrel_ECAL_;
-  const double etaStripEndcap_ECAL_;
-  const double energyBarrel_ECAL_;
-  const double energyEndcap_ECAL_;
+  const edm::EDGetTokenT<reco::PFCandidateCollection> pfCandidateProducer_;
+  const double drMaxPf_;
+  const double drVetoPf_;
+  const double drVetoPfCh_;
+  const double minEnergyPf_;
 
-  const edm::EDGetTokenT<reco::PFClusterCollection> pfClusterProducerHCAL_;
-  const edm::EDGetTokenT<double> t_rho_HCAL_;
-
-  const double drMax_HCAL_;
-  const double drVetoBarrel_HCAL_;
-  const double drVetoEndcap_HCAL_;
-  const double etaStripBarrel_HCAL_;
-  const double etaStripEndcap_HCAL_;
-  const double energyBarrel_HCAL_;
-  const double energyEndcap_HCAL_;
-  
-  const edm::EDGetTokenT<reco::CaloClusterCollection> layerClusterProducer_HGCAL_;
-  const edm::EDGetTokenT<edm::ValueMap<std::pair<float, float>>> hgcalLayerClustersTime_; // Feed with timeLayerCluster  
-  
-  const double drVetoHad_HGCAL_;
-  const	double drVetoEM_HGCAL_;
-  const	double drMax_HGCAL_;
-  
-  const double theDiff_r;                                                 //! transverse distance to vertex 
-  const double theDiff_z;                                                 //! z distance to vertex
-  const double theDR_Max;                                                 //! Maximum cone angle for deposits 
-  const double theDR_Veto;                                                //! Veto cone angle
-  const unsigned int theNHits_Min;                                        //! trk.numberOfValidHits >= theNHits_Min
-  const double theChi2Ndof_Max;                                           //! trk.normalizedChi2 < theChi2Ndof_Max
-  const double theChi2Prob_Min;  //! ChiSquaredProbability(trk.chi2,trk.ndof) > theChi2Prob_Min
-  const double thePt_Min;        //! min track pt to include into iso deposit  
-  
-  //const edm::EDGetTokenT<reco::TrackCollection> theTrackCollectionToken_;
-  const edm::EDGetTokenT<edm::View<reco::Track>> theTrackCollectionToken_;
-
-  //const edm::EDGetTokenT<reco::TrackCollection> RecMTDTrackToken_;
-  //const edm::EDGetTokenT<reco::TPToSimCollectionMtd> tp2SimAssociationMapToken_;
-  //const edm::EDGetTokenT<MtdRecoClusterToSimLayerClusterAssociationMap> r2sAssociationMapToken_;
-  const edm::EDGetTokenT<edm::ValueMap<int>> trackAssocToken_;
-  //const edm::EDGetTokenT<TrackingParticleCollection> trackingParticleCollectionToken_;
-  //const edm::EDGetTokenT<reco::RecoToSimCollection> recoToSimAssociationToken_;
-  //const edm::EDGetTokenT<reco::SimToRecoCollection> simToRecoAssociationToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> t0SrcToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> Sigmat0SrcToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> t0PidToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> t0SafePidToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> sigmat0SafePidToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> trackMVAQualToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> tmtdToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> tofPiToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> tofKToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> tofPToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> probPiToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> probKToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> probPToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> sigmatofpiToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> sigmatofkToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> sigmatofpToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> btlMatchChi2Token_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> btlMatchTimeChi2Token_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> etlMatchChi2Token_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> etlMatchTimeChi2Token_;
-  const edm::EDGetTokenT<edm::ValueMap<int>> npixBarrelToken_;
-  const edm::EDGetTokenT<edm::ValueMap<int>> npixEndcapToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> trackOutermostHitPositionToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> trackpSrcToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> trackBetaSrcToken_;
-  const edm::EDGetTokenT<edm::ValueMap<float>> trackPathLengthToken_;
-  const edm::EDGetTokenT<edm::ValueMap<GlobalPoint>> trackmtdposToken_;
   
   /// ------------------------
 
@@ -996,6 +922,27 @@ private:
   int track_TPnumberOfHits_[arrSize_];
   int track_TPnumberOfTrackerHits_[arrSize_];
   int track_TPnumberOfTrackerLayers_[arrSize_];
+
+  int nPFCand_;
+  double pfcand_pt_[arrSize_];
+  double pfcand_eta_[arrSize_];
+  double pfcand_phi_[arrSize_];
+  int pfcand_charge_[arrSize_];
+  int pfcand_pdgId_[arrSize_];
+  double pfcand_px_[arrSize_];
+  double pfcand_py_[arrSize_];
+  double pfcand_pz_[arrSize_];
+  double pfcand_vx_[arrSize_];
+  double pfcand_vy_[arrSize_];
+  double pfcand_vz_[arrSize_];
+  double pfcand_time_[arrSize_];
+  double pfcand_timeErr_[arrSize_];
+  double pfcand_dxy_[arrSize_];
+  double pfcand_dz_[arrSize_];
+  double pfcand_dxyErr_[arrSize_];
+  double pfcand_dzErr_[arrSize_];
+  double pfcand_vChi2NoF_[arrSize_];
+  int pfcand_muonIdx_[arrSize_];
   
   class seedTemplate {
   private:
