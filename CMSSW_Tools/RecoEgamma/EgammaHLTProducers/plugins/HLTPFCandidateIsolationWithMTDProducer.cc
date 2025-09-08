@@ -1,0 +1,240 @@
+#include <iostream>
+#include <vector>
+#include <memory>
+
+#include "FWCore/Framework/interface/Event.h"
+#include "FWCore/Framework/interface/EventSetup.h"
+#include "DataFormats/Common/interface/Handle.h"
+#include "FWCore/Framework/interface/ESHandle.h"
+#include "FWCore/MessageLogger/interface/MessageLogger.h"
+#include "FWCore/Utilities/interface/Exception.h"
+#include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
+#include "FWCore/ParameterSet/interface/ParameterSetDescription.h"
+
+#include "DataFormats/Math/interface/deltaR.h"
+
+#include "HLTrigger/HLTcore/interface/defaultModuleLabel.h"
+
+#include "FWCore/Framework/interface/Frameworkfwd.h"
+#include "FWCore/Framework/interface/stream/EDProducer.h"
+
+#include "FWCore/Framework/interface/Event.h"
+#include "FWCore/Framework/interface/MakerMacros.h"
+
+#include "FWCore/ParameterSet/interface/ParameterSet.h"
+
+#include "DataFormats/ParticleFlowCandidate/interface/PFCandidate.h"
+#include "DataFormats/ParticleFlowCandidate/interface/PFCandidateFwd.h"
+
+#include "DataFormats/RecoCandidate/interface/RecoEcalCandidate.h"
+#include "DataFormats/RecoCandidate/interface/RecoEcalCandidateIsolation.h"
+
+#include "DataFormats/RecoCandidate/interface/RecoChargedCandidate.h"
+#include "DataFormats/RecoCandidate/interface/RecoChargedCandidateIsolation.h"
+
+template <typename T1>
+class HLTPFCandidateIsolationWithMTDProducer : public edm::stream::EDProducer<> {
+  typedef std::vector<T1> T1Collection;
+  typedef edm::Ref<T1Collection> T1Ref;
+  typedef edm::AssociationMap<edm::OneToValue<std::vector<T1>, float>> T1IsolationMap;
+
+public:
+  explicit HLTPFCandidateIsolationWithMTDProducer(const edm::ParameterSet&);
+  ~HLTPFCandidateIsolationWithMTDProducer() override = default;
+
+  void produce(edm::Event&, const edm::EventSetup&) override;
+  static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
+
+private:
+  //// To change
+  edm::EDGetTokenT<T1Collection> recoCandidateProducer_;
+  const edm::EDGetTokenT<reco::PFCandidateCollection> pfCandidateProducer_;
+  //const edm::EDGetTokenT<double> rhoProducer_;
+
+  const edm::EDGetTokenT<edm::ValueMap<float>> candTrackt0Token_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> candTracksigmat0Token_;
+  
+  const edm::EDGetTokenT<edm::ValueMap<float>> t0SrcToken_;
+  const edm::EDGetTokenT<edm::ValueMap<float>> Sigmat0SrcToken_;
+
+  const double drMax_;
+  const double drVeto_;
+  const double drVetoCh_;
+  const double minEnergy_;
+  //const bool doRhoCorrection_;
+  //const double rhoMax_;
+  //const double rhoScale_;
+  //const std::vector<double> effectiveAreas_;
+};
+
+template <typename T1>
+HLTPFCandidateIsolationWithMTDProducer<T1>::HLTPFCandidateIsolationWithMTDProducer(const edm::ParameterSet& config)
+    : pfCandidateProducer_(consumes<reco::PFCandidateCollection>(config.getParameter<edm::InputTag>("pfCandidateProducer"))),
+      //rhoProducer_(consumes<double>(config.getParameter<edm::InputTag>("rhoProducer"))),
+      candTrackt0Token_(consumes<edm::ValueMap<float>>(config.getParameter<edm::InputTag>("candTrackt0"))),
+      candTracksigmat0Token_(consumes<edm::ValueMap<float>>(config.getParameter<edm::InputTag>("candTracksigmat0"))),
+      t0SrcToken_(consumes<edm::ValueMap<float>>(config.getParameter<edm::InputTag>("t0Src"))),
+      Sigmat0SrcToken_(consumes<edm::ValueMap<float>>(config.getParameter<edm::InputTag>("sigmat0Src"))),
+      drMax_(config.getParameter<double>("drMax")),
+      drVeto_(config.getParameter<double>("drVeto")),
+      drVetoCh_(config.getParameter<double>("drVetoCh")),
+      minEnergy_(config.getParameter<double>("minEnergy"))
+      //doRhoCorrection_(config.getParameter<bool>("doRhoCorrection")),
+      //rhoMax_(config.getParameter<double>("rhoMax")),
+      //rhoScale_(config.getParameter<double>("rhoScale")),
+      //effectiveAreas_(config.getParameter<std::vector<double>>("effectiveAreas"))
+{
+  //  if (doRhoCorrection_) {
+  //  if (effectiveAreas_.size() != 2)
+  //    throw cms::Exception("IncompatibleVects")
+  //        << "effectiveAreas should have two elements for em and had components. \n";
+
+  std::string recoCandidateProducerName = "recoCandidateProducer";
+  if ((typeid(HLTPFCandidateIsolationWithMTDProducer<T1>) ==
+       typeid(HLTPFCandidateIsolationWithMTDProducer<reco::RecoEcalCandidate>)))
+    recoCandidateProducerName = "recoEcalCandidateProducer";
+
+  recoCandidateProducer_ = consumes<T1Collection>(config.getParameter<edm::InputTag>(recoCandidateProducerName));
+  produces<T1IsolationMap>();
+}
+
+template <typename T1>
+void HLTPFCandidateIsolationWithMTDProducer<T1>::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+  std::string recoCandidateProducerName = "recoCandidateProducer";
+  if ((typeid(HLTPFCandidateIsolationWithMTDProducer<T1>) ==
+       typeid(HLTPFCandidateIsolationWithMTDProducer<reco::RecoEcalCandidate>)))
+    recoCandidateProducerName = "recoEcalCandidateProducer";
+
+  edm::ParameterSetDescription desc;
+  desc.add<edm::InputTag>(recoCandidateProducerName, edm::InputTag("hltL1SeededRecoEcalCandidatePF"));
+  desc.add<edm::InputTag>("pfCandidateProducer", edm::InputTag("hltParticleFlowTmp"));
+  desc.add<edm::InputTag>("candTrackt0", edm::InputTag("CandtofPID:candt0"));
+  desc.add<edm::InputTag>("candTracksigmat0", edm::InputTag("CandtofPID:candSigmat0"));
+  desc.add<edm::InputTag>("t0Src", edm::InputTag("hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx:generalTrackt0"));
+  desc.add<edm::InputTag>("sigmat0Src", edm::InputTag("hltPhase2L3MuonGeneralMuonTrackMTDTExtendedVtx:generalTracksigmat0"));
+  // desc.add<edm::InputTag>("rhoProducer", edm::InputTag("fixedGridRhoFastjetAllCalo"));
+  // desc.add<bool>("doRhoCorrection", false);
+  // desc.add<double>("rhoMax", 9.9999999E7);
+  // desc.add<double>("rhoScale", 1.0);
+  desc.add<double>("drMax", 0.4);
+  desc.add<double>("drVeto", 0.01);
+  desc.add<double>("drVetoCh", 0.0001);
+  desc.add<double>("minEnergy", 0.0);
+  //desc.add<std::vector<double>>("effectiveAreas", {0.0, 0.0});  // for em and had components
+  descriptions.add(defaultModuleLabel<HLTPFCandidateIsolationWithMTDProducer<T1>>(), desc);
+}
+
+template <typename T1>
+void HLTPFCandidateIsolationWithMTDProducer<T1>::produce(edm::Event& iEvent, const edm::EventSetup&) {
+
+  // edm::Handle<double> rhoHandle;
+  // double rho = 0.0;
+  // if (doRhoCorrection_) {
+  //   iEvent.getByToken(rhoProducer_, rhoHandle);
+  //   rho = *(rhoHandle.product());
+  // }
+  //
+  // rho = std::min(rho, rhoMax_);
+  // rho = rho * rhoScale_;
+  
+  edm::Handle<T1Collection> recoCandHandle;
+  edm::Handle<reco::PFCandidateCollection> pfCandidateHandle;
+
+  iEvent.getByToken(recoCandidateProducer_, recoCandHandle);
+  iEvent.getByToken(pfCandidateProducer_, pfCandidateHandle);
+
+  edm::Handle<edm::ValueMap<float>> candTrackt0Handle;
+  edm::ValueMap<float> candTrackt0;
+  edm::ValueMap<float> candTracksigmat0;
+  
+  bool skipMTD = false;
+  if (iEvent.getByToken(candTrackt0Token_, candTrackt0Handle)){
+    //candTrackt0 = iEvent.get(candTrackt0Token_);
+    candTrackt0 = *candTrackt0Handle;
+    candTracksigmat0 = iEvent.get(candTracksigmat0Token_);
+  }else{
+    skipMTD = true;
+  }
+
+  const auto& t0Src = iEvent.get(t0SrcToken_);
+  const auto& Sigmat0Src = iEvent.get(Sigmat0SrcToken_);
+  
+  const std::vector<reco::PFCandidate> pfCandidates = *(pfCandidateHandle.product());
+
+  T1IsolationMap recoCandMap(recoCandHandle);
+  for (unsigned int iReco = 0; iReco < recoCandHandle->size(); iReco++) {
+    
+    T1Ref candRef(recoCandHandle, iReco);
+    
+    bool hasMTDInfo = false;
+    reco::TrackRef candtrackref = candRef->track();
+    
+    if (candtrackref.isNonnull()){
+      if (skipMTD) {
+	hasMTDInfo = false;
+      }else{
+	//if (candTrackt0[candtrackref]){
+	//hasMTDInfo = false;
+	try {
+	  if (candTrackt0[candtrackref] == -1) {
+	    hasMTDInfo = false;
+	  }else{
+	    hasMTDInfo = true;
+	  }
+	}catch (...) {
+          hasMTDInfo = false;
+        }
+      }
+    }
+            
+    float sum = 0.0;
+    for (unsigned int iPF = 0; iPF < pfCandidateHandle->size(); iPF++) {
+      reco::PFCandidateRef pc(pfCandidateHandle, iPF);
+
+      //std::cout << "Tracker access" << std::endl;
+      
+      bool trackHasMTDInfo = false;
+      const reco::TrackRef trackref = pc->trackRef();
+      if (trackref.isNonnull()){
+
+	// t0Src[trackref]
+	try {
+	  //std::cout << "evaluate value" << std::endl;
+	  if (t0Src[trackref] == -1) {
+	    trackHasMTDInfo = false;
+	  }else{
+	    trackHasMTDInfo = true;
+	  }
+	}catch (...) {
+	  trackHasMTDInfo = false;
+	}
+      }
+
+      //std::cout << "seems not" << std::endl;
+
+      // Dummy cut -------
+      if (hasMTDInfo && trackHasMTDInfo)
+	if (fabs((float)t0Src[trackref] - (float)candTrackt0[candtrackref])<-999)
+	  continue;
+
+      float dr2 = reco::deltaR2(candRef->eta(), candRef->phi(), pc->eta(), pc->phi());
+      if (dr2 > drMax_ * drMax_)
+	continue;
+      if (fabs(pc->charge())){
+	if (dr2 > drVetoCh_ && pc->pt() > minEnergy_)
+	  sum += pc->pt();
+      }else{
+	if (dr2 > drVeto_ && pc->pt() > minEnergy_)
+          sum += pc->pt();
+      }
+    }
+    recoCandMap.insert(candRef, sum);
+  }
+  iEvent.put(std::make_unique<T1IsolationMap>(recoCandMap));
+}
+
+typedef HLTPFCandidateIsolationWithMTDProducer<reco::RecoEcalCandidate> EgammaHLTPFCandidateIsolationWithMTDProducer;
+typedef HLTPFCandidateIsolationWithMTDProducer<reco::RecoChargedCandidate> MuonHLTPFCandidateIsolationWithMTDProducer;
+
+DEFINE_FWK_MODULE(EgammaHLTPFCandidateIsolationWithMTDProducer);
+DEFINE_FWK_MODULE(MuonHLTPFCandidateIsolationWithMTDProducer);

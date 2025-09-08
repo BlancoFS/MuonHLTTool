@@ -94,16 +94,16 @@ Phase2HLTMuonSelectorForL3::Phase2HLTMuonSelectorForL3(const edm::ParameterSet& 
   if (IOFirst_) {
     produces<reco::TrackCollection>("L2MuToReuse");
     produces<reco::TrackCollection>("L3IOTracksFiltered");
-    if (copyTrajectories_) {
-      produces<std::vector<Trajectory>>("L3IOTracksFilteredTrajectories");
-      produces<TrajTrackAssociationCollection>("L3IOTracksFilteredTrajectoryTrackAssociations");
+    if (copyTrajectories_) {      
+      produces<std::vector<Trajectory>>("L3IOTracksFiltered"); // L3IOTracksFilteredTrajectories
+      produces<TrajTrackAssociationCollection>("L3IOTracksFiltered"); // L3IOTracksFilteredTrajectoryTrackAssociations
     }    
   } else {
     produces<l1t::TrackerMuonCollection>("L1TkMuToReuse");
     produces<reco::TrackCollection>("L3OITracksFiltered");
     if (copyTrajectories_) {
-      produces<std::vector<Trajectory>>("L3OITracksFilteredTrajectories");
-      produces<TrajTrackAssociationCollection>("L3OITracksFilteredTrajectoryTrackAssociations");
+      produces<std::vector<Trajectory>>("L3OITracksFiltered"); // L3OITracksFilteredTrajectories
+      produces<TrajTrackAssociationCollection>("L3OITracksFiltered"); // L3OITracksFilteredTrajectoryTrackAssociations
     }
   }
 }
@@ -146,17 +146,7 @@ void Phase2HLTMuonSelectorForL3::produce(edm::Event& iEvent, const edm::EventSet
     // Output
     std::unique_ptr<reco::TrackCollection> L2MuToReuse = std::make_unique<reco::TrackCollection>();
     std::unique_ptr<reco::TrackCollection> L3IOTracksFiltered = std::make_unique<reco::TrackCollection>();
-
-    // Copy trajectories
-    auto rTracks = iEvent.getRefBeforePut<reco::TrackCollection>();
-    
-    std::unique_ptr<std::vector<Trajectory>> L3IOTracksFilteredTrajectories;
-    std::unique_ptr<TrajTrackAssociationCollection> L3IOTracksFilteredTrajectoryTrackAssociations = std::make_unique<TrajTrackAssociationCollection>(iEvent.getRefBeforePut<std::vector<Trajectory> >(), iEvent.getRefBeforePut<reco::TrackCollection>());
-
-    edm::RefProd<std::vector<Trajectory> > trajRefProd;
-    if (copyTrajectories_) {
-      trajRefProd = iEvent.getRefBeforePut<std::vector<Trajectory> >();
-    }
+    std::unique_ptr<std::vector<Trajectory>> L3IOTracksFilteredTrajectories = std::make_unique<std::vector<Trajectory>>();
 
     // Indexes of good L3 Tracks
     std::unordered_set<size_t> goodL3Indexes;
@@ -204,38 +194,45 @@ void Phase2HLTMuonSelectorForL3::produce(edm::Event& iEvent, const edm::EventSet
         L2MuToReuse->push_back(*l2MuRef);
       }
     }  // End loop over L2 Muons
-
+    
     // Fill L3 IO Tracks Filtered
     for (const size_t index : goodL3Indexes) {
       L3IOTracksFiltered->push_back(*(reco::TrackRef(l3TracksCollectionH, index)));
       if (copyTrajectories_) {
 	L3IOTracksFilteredTrajectories->push_back(l3trajIn[index]);
+
 	assert(L3IOTracksFilteredTrajectories->back().measurements().size() == L3IOTracksFiltered->back().recHitsSize());
 
 	//L3IOTracksFilteredTrajectoryTrackAssociations->insert(edm::Ref<std::vector<Trajectory> >(trajRefProd, L3IOTracksFilteredTrajectories->size() - 1),
 	//							      reco::TrackRef(rTracks, L3IOTracksFiltered->size() - 1));
       }
     }
-
+    
     LogDebug(metname) << "Placing L2 Muons to be reused in the event";
     iEvent.put(std::move(L2MuToReuse), "L2MuToReuse");
     LogDebug(metname) << "Placing good quality L3 IO Tracks in the event";
+    
     //iEvent.put(std::move(L3IOTracksFiltered), "L3IOTracksFiltered");
     edm::OrphanHandle<reco::TrackCollection> theIOTracks = iEvent.put(std::move(L3IOTracksFiltered), "L3IOTracksFiltered");
 
     if (copyTrajectories_) {
-      auto tsize = L3IOTracksFiltered->size();
+      auto tsize = theIOTracks->size();
       assert(L3IOTracksFilteredTrajectories->size() == tsize);
-      assert(L3IOTracksFilteredTrajectoryTrackAssociations->size() == tsize);
+      //assert(L3IOTracksFilteredTrajectoryTrackAssociations->size() == tsize);
       //iEvent.put(std::move(L3IOTracksFilteredTrajectories));
-
-      edm::OrphanHandle<vector<Trajectory>> theIOTrajectories = iEvent.put(std::move(L3IOTracksFilteredTrajectories));
+      
+      //edm::OrphanHandle<vector<Trajectory>> theIOTrajectories = iEvent.put(std::move(L3IOTracksFilteredTrajectories), "L3IOTracksFilteredTrajectories");
+      edm::OrphanHandle<vector<Trajectory>> theIOTrajectories = iEvent.put(std::move(L3IOTracksFilteredTrajectories), "L3IOTracksFiltered");
+      
+      std::unique_ptr<TrajTrackAssociationCollection> L3IOTracksFilteredTrajectoryTrackAssociations = std::make_unique<TrajTrackAssociationCollection>(theIOTrajectories, theIOTracks);
       for (unsigned index = 0; index < tsize; ++index) {
 	edm::Ref<vector<Trajectory>> trajRef(theIOTrajectories, index);
 	edm::Ref<reco::TrackCollection> tkRef(theIOTracks, index);
         L3IOTracksFilteredTrajectoryTrackAssociations->insert(trajRef, tkRef);
       }
-      iEvent.put(std::move(L3IOTracksFilteredTrajectoryTrackAssociations));
+      assert(L3IOTracksFilteredTrajectoryTrackAssociations->size() == tsize);
+      //iEvent.put(std::move(L3IOTracksFilteredTrajectoryTrackAssociations), "L3IOTracksFilteredTrajectoryTrackAssociations");
+      iEvent.put(std::move(L3IOTracksFilteredTrajectoryTrackAssociations), "L3IOTracksFiltered");
     }
     
   } else {
@@ -249,15 +246,15 @@ void Phase2HLTMuonSelectorForL3::produce(edm::Event& iEvent, const edm::EventSet
     std::unique_ptr<reco::TrackCollection> L3OITracksFiltered = std::make_unique<reco::TrackCollection>();
 
     // Copy trajectories
-    auto rTracks = iEvent.getRefBeforePut<reco::TrackCollection>();
+    //auto rTracks = iEvent.getRefBeforePut<reco::TrackCollection>();
 
     std::unique_ptr<std::vector<Trajectory>> L3OITracksFilteredTrajectories;
     std::unique_ptr<TrajTrackAssociationCollection> L3OITracksFilteredTrajectoryTrackAssociations;
 
-    edm::RefProd<std::vector<Trajectory> > trajRefProd;
-    if (copyTrajectories_) {
-      trajRefProd = iEvent.getRefBeforePut<std::vector<Trajectory> >();
-    }
+    //edm::RefProd<std::vector<Trajectory> > trajRefProd;
+    //if (copyTrajectories_) {
+    //  trajRefProd = iEvent.getRefBeforePut<std::vector<Trajectory> >();
+    //}
 
     // Indexes of good L3 Tracks
     std::unordered_set<size_t> goodL3Indexes;
@@ -327,8 +324,9 @@ void Phase2HLTMuonSelectorForL3::produce(edm::Event& iEvent, const edm::EventSet
         L3OITracksFilteredTrajectoryTrackAssociations->insert(trajRef, tkRef);
       }
       iEvent.put(std::move(L3OITracksFilteredTrajectoryTrackAssociations));
-    }    
+    }   
   }
+  
 }
 
 const bool Phase2HLTMuonSelectorForL3::rejectL3Track(l1t::TrackerMuonRef l1TkMuRef, reco::TrackRef l3TrackRef) const {

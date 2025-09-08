@@ -107,7 +107,7 @@ namespace {
       segmentSigmaMom_.emplace_back(sigmaMom);
       nSegment_++;
 
-      LogTrace("TrackExtenderWithMTD") << "addSegment # " << nSegment_ << " s = " << tPath
+      LogTrace("MuonExtenderWithMTD") << "addSegment # " << nSegment_ << " s = " << tPath
                                        << " p = " << std::sqrt(tMom2) << " sigma_p = " << sigmaMom
                                        << " sigma_p/p = " << sigmaMom / std::sqrt(tMom2) * 100 << " %";
 
@@ -121,14 +121,14 @@ namespace {
         float beta = std::sqrt(1.f - 1.f / gammasq);
         tof += segmentPathOvc_[iSeg] / beta;
 
-        LogTrace("TrackExtenderWithMTD") << " TOF Segment # " << iSeg + 1 << " p = " << std::sqrt(segmentMom2_[iSeg])
+        LogTrace("MuonExtenderWithMTD") << " TOF Segment # " << iSeg + 1 << " p = " << std::sqrt(segmentMom2_[iSeg])
                                          << " tof = " << tof;
 
 #ifdef EDM_ML_DEBUG
         float sigma_tof = segmentPathOvc_[iSeg] * segmentSigmaMom_[iSeg] /
                           (segmentMom2_[iSeg] * sqrt(segmentMom2_[iSeg] + 1 / mass_inv2) * mass_inv2);
 
-        LogTrace("TrackExtenderWithMTD") << "TOF Segment # " << iSeg + 1 << std::fixed << std::setw(6)
+        LogTrace("MuonExtenderWithMTD") << "TOF Segment # " << iSeg + 1 << std::fixed << std::setw(6)
                                          << " tof segment = " << segmentPathOvc_[iSeg] / beta << std::scientific
                                          << "+/- " << sigma_tof << std::fixed
                                          << "(rel. err. = " << sigma_tof / (segmentPathOvc_[iSeg] / beta) * 100
@@ -179,7 +179,7 @@ namespace {
 
     inline std::pair<float, float> getSegmentPathAndMom2(uint32_t iSegment) const {
       if (iSegment >= nSegment_) {
-        throw cms::Exception("TrackExtenderWithMTD") << "Requesting non existing track segment #" << iSegment;
+        throw cms::Exception("MuonExtenderWithMTD") << "Requesting non existing track segment #" << iSegment;
       }
       return std::make_pair(segmentPathOvc_[iSegment], segmentMom2_[iSegment]);
     }
@@ -325,6 +325,9 @@ namespace {
       tofpid.dt = tofpid.tmtd - tofpid.dt_mu - t_vtx;
     else
       tofpid.dt = tofpid.tmtd - tofpid.dt_pi - t_vtx;
+
+    if (doMuon)
+      std::cout << "DeltaT for muon = " << tofpid.dt << std::endl;
     
     tofpid.dterror2 = tofpid.tmtderror * tofpid.tmtderror + t_vtx_err * t_vtx_err;
     tofpid.betaerror = 0.f;
@@ -448,7 +451,7 @@ namespace {
 
       trs.addSegment(layerpathlength, (it + 1)->updatedState().globalMomentum().mag2(), sigma_p);
 
-      LogTrace("TrackExtenderWithMTD") << "TSOS " << std::fixed << std::setw(4) << trs.size() << " R_i " << std::fixed
+      LogTrace("MuonExtenderWithMTD") << "TSOS " << std::fixed << std::setw(4) << trs.size() << " R_i " << std::fixed
                                        << std::setw(14) << it->updatedState().globalPosition().perp() << " z_i "
                                        << std::fixed << std::setw(14) << it->updatedState().globalPosition().z()
                                        << " R_e " << std::fixed << std::setw(14)
@@ -474,7 +477,7 @@ namespace {
 
     trs.addSegment(pathlength2, tscblPCA.momentum().mag2(), sigma_p);
 
-    LogTrace("TrackExtenderWithMTD") << "TSOS " << std::fixed << std::setw(4) << trs.size() << " R_e " << std::fixed
+    LogTrace("MuonExtenderWithMTD") << "TSOS " << std::fixed << std::setw(4) << trs.size() << " R_e " << std::fixed
                                      << std::setw(14) << tscblPCA.position().perp() << " z_e " << std::fixed
                                      << std::setw(14) << tscblPCA.position().z() << " p " << std::fixed << std::setw(14)
                                      << tscblPCA.momentum().mag() << " dp " << std::fixed << std::setw(14)
@@ -505,12 +508,12 @@ namespace {
 }  // namespace
 
 template <class TrackCollection>
-class TrackExtenderWithMTDT : public edm::stream::EDProducer<> {
+class MuonExtenderWithMTDT : public edm::stream::EDProducer<> {
 public:
   typedef typename TrackCollection::value_type TrackType;
   typedef edm::View<TrackType> InputCollection;
 
-  TrackExtenderWithMTDT(const ParameterSet& pset);
+  MuonExtenderWithMTDT(const ParameterSet& pset);
 
   template <class H, class T>
   void fillValueMap(edm::Event& iEvent, const H& handle, const std::vector<T>& vec, const edm::EDPutToken& token) const;
@@ -578,7 +581,7 @@ public:
       if (rFirst > rLast)
         return RefitDirection::outsideIn;
     }
-    LogDebug("TrackExtenderWithMTD") << "Impossible to determine the rechits order" << endl;
+    LogDebug("MuonExtenderWithMTD") << "Impossible to determine the rechits order" << endl;
     return RefitDirection::undetermined;
   }
 
@@ -673,7 +676,7 @@ private:
 };
 
 template <class TrackCollection>
-TrackExtenderWithMTDT<TrackCollection>::TrackExtenderWithMTDT(const ParameterSet& iConfig)
+MuonExtenderWithMTDT<TrackCollection>::MuonExtenderWithMTDT(const ParameterSet& iConfig)
     : tracksToken_(consumes<InputCollection>(iConfig.getParameter<edm::InputTag>("tracksSrc"))),
       trajTrackAToken_(consumes<TrajTrackAssociationCollection>(iConfig.getParameter<edm::InputTag>("trjtrkAssSrc"))),
       hitsToken_(consumes<MTDTrackingDetSetVector>(iConfig.getParameter<edm::InputTag>("hitsSrc"))),
@@ -746,7 +749,7 @@ TrackExtenderWithMTDT<TrackCollection>::TrackExtenderWithMTDT(const ParameterSet
 }
 
 template <class TrackCollection>
-void TrackExtenderWithMTDT<TrackCollection>::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+void MuonExtenderWithMTDT<TrackCollection>::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc, transDesc;
   desc.add<edm::InputTag>("tracksSrc", edm::InputTag("generalTracks"));
   desc.add<edm::InputTag>("trjtrkAssSrc", edm::InputTag("generalTracks"));
@@ -788,7 +791,7 @@ void TrackExtenderWithMTDT<TrackCollection>::fillDescriptions(edm::Configuration
 
 template <class TrackCollection>
 template <class H, class T>
-void TrackExtenderWithMTDT<TrackCollection>::fillValueMap(edm::Event& iEvent,
+void MuonExtenderWithMTDT<TrackCollection>::fillValueMap(edm::Event& iEvent,
                                                           const H& handle,
                                                           const std::vector<T>& vec,
                                                           const edm::EDPutToken& token) const {
@@ -800,16 +803,21 @@ void TrackExtenderWithMTDT<TrackCollection>::fillValueMap(edm::Event& iEvent,
 }
 
 template <class TrackCollection>
-void TrackExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::EventSetup& es) {
-
-  if (doMuon_)
-    std::cout << "Start Muon extender with MTD" << std::endl;
-  else
-    std::cout << "Start Track extender with MTD" << std::endl;
-  
+void MuonExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::EventSetup& es) {
   //this produces pieces of the track extra
   Traj2TrackHits t2t;
 
+
+  std::cout << "" << std::endl;
+  std::cout << "" << std::endl;
+  if (!doMuon_)
+    std::cout << "---------------------------- NEW EVENT --------------------------" << std::endl;
+  else
+    std::cout << "---------------------------- NEW MUON EVENT --------------------------" << std::endl;
+  std::cout << "" << std::endl;
+  std::cout << "" << std::endl;
+
+  
   theTransformer->setServices(es);
   TrackingRecHitRefProd hitsRefProd = ev.getRefBeforePut<TrackingRecHitCollection>();
   reco::TrackExtraRefProd extrasRefProd = ev.getRefBeforePut<reco::TrackExtraCollection>();
@@ -893,29 +901,23 @@ void TrackExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::
   std::vector<unsigned> track_indices;
   unsigned itrack = 0;
 
-  std::cout << "Loop on trajectory Size -> " << trjtrks.size() << std::endl;
-  std::cout << "Check tracks Size       -> " << tracksH->size() << std::endl;
-  
   for (const auto& trjtrk : trjtrks) {
     const Trajectory& trajs = *trjtrk.key;
     const reco::TrackRef& track = trjtrk.val;
     
-    LogTrace("TrackExtenderWithMTD") << "TrackExtenderWithMTD: extrapolating track " << itrack
+    LogTrace("MuonExtenderWithMTD") << "MuonExtenderWithMTD: extrapolating track " << itrack
                                      << " p/pT = " << track->p() << " " << track->pt() << " eta = " << track->eta();
-    LogTrace("TrackExtenderWithMTD") << "TrackExtenderWithMTD: sigma_p = "
+    LogTrace("MuonExtenderWithMTD") << "MuonExtenderWithMTD: sigma_p = "
                                      << sqrt(track->covariance()(0, 0)) * track->p2()
                                      << " sigma_p/p = " << sqrt(track->covariance()(0, 0)) * track->p() * 100 << " %";
 
-    if (doMuon_){
-      std::cout << "New trajectory ------" << std::endl;
+    if (doMuon_){      
       std::cout << "MuonExtenderWithMTD: extrapolating track " << itrack
 		<< " p/pT = " << track->p() << " " << track->pt() << " eta = " << track->eta() << std::endl;
+      std::cout << "MuonkExtenderWithMTD: sigma_p = "
+		<< sqrt(track->covariance()(0, 0)) * track->p2()
+		<< " sigma_p/p = " << sqrt(track->covariance()(0, 0)) * track->p() * 100 << " %" << std::endl;
     }
-    //else{
-    //  std::cout	<< "New trajectory ------" << std::endl;
-    //  std::cout	<< "TrackExtenderWithMTD: extrapolating track " << itrack
-    //            << " p/pT = " << track->p() << " " << track->pt() << " eta = " << track->eta() << std::endl;
-    //}
     
     float trackVtxTime = 0.f;
     if (useVertex_) {
@@ -938,8 +940,18 @@ void TrackExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::
       // get the outermost trajectory point on the track
       TrajectoryStateOnSurface tsos = builder_->build(track).outermostMeasurementState();
 
+      //// Get
       if (doMuon_) {
 	if (!trajs.measurements().empty()) {
+
+	  std::cout << "" << std::endl;
+	  std::cout << "Original outer-TSOS global position: " << tsos.globalPosition() << std::endl;
+	  std::cout << "x -> " << tsos.globalPosition().x() << std::endl;
+          std::cout << "y -> " << tsos.globalPosition().y() << std::endl;
+          std::cout << "z -> " << tsos.globalPosition().z() << std::endl;
+          std::cout << "r -> " << tsos.globalPosition().perp() << std::endl;
+	  std::cout << "" << std::endl;
+
 	  // Loop over measurements and get the last one in the tracker
 	  auto ordering = checkRecHitsOrdering(thits);
 	  if (ordering == RefitDirection::insideOut) {
@@ -965,18 +977,38 @@ void TrackExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::
               }
             }
 	  }
+	  std::cout << "" << std::endl;
+	  std::cout << "New outer-TSOS global position in tracker: " << tsos.globalPosition() << std::endl;
+	  std::cout << "x -> " << tsos.globalPosition().x() << std::endl;
+	  std::cout << "y -> " << tsos.globalPosition().y() << std::endl;
+	  std::cout << "z -> " << tsos.globalPosition().z() << std::endl;
+	  std::cout << "r -> " << tsos.globalPosition().perp() << std::endl;
+	  std::cout << "" << std::endl;
 	}
       }
       
       TrajectoryStateClosestToBeamLine tscbl;
       bool tscbl_status = getTrajectoryStateClosestToBeamLine(trajs, bs, prop, tscbl);
 
+      if (doMuon_) {
+	std::cout << "" << std::endl;
+	std::cout << "Trajectory State Closest To BeamLine" << std::endl;
+	std::cout << "x -> " << tscbl.beamLinePCA().x() << std::endl;
+	std::cout << "y -> " << tscbl.beamLinePCA().y() << std::endl;
+	std::cout << "z -> " << tscbl.beamLinePCA().z() << std::endl;
+	std::cout << "r -> " << tscbl.beamLinePCA().perp() << std::endl;
+	std::cout << "" << std::endl;
+      }
+	
       if (tscbl_status) {
         float pmag2 = tscbl.trackStateAtPCA().momentum().mag2();
         float pathlength0;
         TrackSegments trs0;
         trackPathLength(trajs, tscbl, prop, pathlength0, trs0, doMuon_);
 	//trackPathLength(trajs, tscbl, prop, pathlength0, trs0);
+
+	if (doMuon_)
+	  std::cout << "Original track path length: " << pathlength0 << std::endl;
 
         const auto& btlhits = tryBTLLayers(tsos,
                                            trajs,
@@ -1014,7 +1046,7 @@ void TrackExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::
       }
 #ifdef EDM_ML_DEBUG
       else {
-        LogTrace("TrackExtenderWithMTD") << "Failing getTrajectoryStateClosestToBeamLine, no search for hits in MTD!";
+        LogTrace("MuonExtenderWithMTD") << "Failing getTrajectoryStateClosestToBeamLine, no search for hits in MTD!";
 	std::cout << "Failing getTrajectoryStateClosestToBeamLine, no search for hits in MTD!" << std::endl;
       }
 #endif
@@ -1025,13 +1057,19 @@ void TrackExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::
       
       if (doMuon_){
 
+	std::cout << "" << std::endl;
+	std::cout << "InsideOut reconstruction" << std::endl;
+	std::cout << "" << std::endl;
+	
 	TransientTrackingRecHit::ConstRecHitContainer innerthits;
 	TransientTrackingRecHit::ConstRecHitContainer outerthits;
 
 	for (auto const& hit : thits) {
 	  if (hit->geographicalId().det() == DetId::Tracker){
+	    std::cout << "tracker hit" << std::endl;
 	    innerthits.push_back(hit);
 	  }else if (hit->geographicalId().det() == DetId::Muon){
+	    std::cout << "muon hit" << std::endl;
 	    outerthits.push_back(hit);
 	  }else{
 	    std::cout << "Where is this hit coming from?" << std::endl;	  
@@ -1047,13 +1085,19 @@ void TrackExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::
 
       if (doMuon_){
 
+	std::cout << "" << std::endl;
+	std::cout << "OutsideIn reconstruction" << std::endl;
+	std::cout << "" << std::endl;
+	
 	TransientTrackingRecHit::ConstRecHitContainer innerthits;
 	TransientTrackingRecHit::ConstRecHitContainer outerthits;
 	
 	for (auto const& hit : thits) {
 	  if (hit->geographicalId().det() == DetId::Tracker){
+	    std::cout << "tracker hit" << std::endl;
 	    innerthits.push_back(hit);
 	  }else if (hit->geographicalId().det() == DetId::Muon){
+	    std::cout << "muon hit" << std::endl;
 	    outerthits.push_back(hit);
 	  }else
 	    std::cout << "Where is this hit coming from?" << std::endl;
@@ -1068,6 +1112,12 @@ void TrackExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::
 	thits.swap(mtdthits);
       }
     }
+
+    std::cout << "New set of hits created!" << std::endl;
+    if (!mtdthits.empty())
+      std::cout << "MTD Hits found!!!!" << std::endl;    
+    else
+      std::cout << "MTD hits not found :(" << std::endl;
     
     const auto& trajwithmtd =
         mtdthits.empty() ? std::vector<Trajectory>(1, trajs) : theTransformer->transform(ttrack, thits);
@@ -1080,12 +1130,15 @@ void TrackExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::
       const auto& thetrj = (updateTraj_ ? trj : trajs);
       float pathLength = 0.f, tmtd = 0.f, sigmatmtd = -1.f, tofpi = 0.f, tofk = 0.f, tofp = 0.f, tofmu = 0.f, sigmatofpi = -1.f, sigmatofk = -1.f, sigmatofp = -1.f, sigmatofmu = -1.f;
       GlobalPoint tmtdPos{0., 0., 0.};
-      LogTrace("TrackExtenderWithMTD") << "TrackExtenderWithMTD: refit track " << itrack << " p/pT = " << track->p()
+      LogTrace("MuonExtenderWithMTD") << "MuonExtenderWithMTD: refit track " << itrack << " p/pT = " << track->p()
                                        << " " << track->pt() << " eta = " << track->eta();
 
       if (doMuon_){
 	std::cout << "MuonExtenderWithMTD: refit track " << itrack << " p/pT = " << track->p()
 		  << " " << track->pt() << " eta = " << track->eta() << std::endl;
+      }else{
+	std::cout << "MuonExtenderWithMTD: refit track " << itrack << " p/pT = " << track->p()
+                  << " " << track->pt() << " eta = " << track->eta() << std::endl;
       }
       
       reco::Track result = buildTrack(track,
@@ -1153,11 +1206,11 @@ void TrackExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::
           backtrack.appendHitPattern((*outhits)[ihit], ttopo);
         }
 #ifdef EDM_ML_DEBUG
-        LogTrace("TrackExtenderWithMTD") << "TrackExtenderWithMTD: hit pattern of refitted track";
+        LogTrace("MuonExtenderWithMTD") << "MuonExtenderWithMTD: hit pattern of refitted track";
         for (int i = 0; i < backtrack.hitPattern().numberOfAllHits(reco::HitPattern::TRACK_HITS); i++) {
           backtrack.hitPattern().printHitPattern(reco::HitPattern::TRACK_HITS, i, std::cout);
         }
-        LogTrace("TrackExtenderWithMTD") << "TrackExtenderWithMTD: missing hit pattern of refitted track";
+        LogTrace("MuonExtenderWithMTD") << "MuonExtenderWithMTD: missing hit pattern of refitted track";
         for (int i = 0; i < backtrack.hitPattern().numberOfAllHits(reco::HitPattern::MISSING_INNER_HITS); i++) {
           backtrack.hitPattern().printHitPattern(reco::HitPattern::MISSING_INNER_HITS, i, std::cout);
         }
@@ -1174,7 +1227,7 @@ void TrackExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::
                                                                                   : (float)(*track).outerZ());
         }
 
-        LogTrace("TrackExtenderWithMTD") << "TrackExtenderWithMTD: tmtd " << tmtdMap << " +/- " << sigmatmtdMap
+        LogTrace("MuonExtenderWithMTD") << "MuonExtenderWithMTD: tmtd " << tmtdMap << " +/- " << sigmatmtdMap
                                          << " t0 " << t0Map << " +/- " << sigmat0Map << " tof pi/K/p " << tofpiMap
                                          << "+/-" << fmt::format("{:0.2g}", sigmatofpiMap) << " ("
                                          << fmt::format("{:0.2g}", sigmatofpiMap / tofpiMap * 100) << "%) " << tofkMap
@@ -1185,14 +1238,32 @@ void TrackExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::
 
 	if (doMuon_){
 	  std::cout << "MuonExtenderWithMTD: tmtd " << tmtdMap << " +/- " << sigmatmtdMap
-		    << " t0 " << t0Map << " +/- " << sigmat0Map << " tof pi/K/p " << tofmuMap
-		    << "+/-" << fmt::format("{:0.2g}", sigmatofmuMap) << " ("
-		    << fmt::format("{:0.2g}", sigmatofmuMap / tofmuMap * 100) << "%) " << std::endl;
+		    << " t0 " << t0Map << " +/- " << sigmat0Map << " tof pi/K/p " << tofpiMap
+		    << "+/-" << fmt::format("{:0.2g}", sigmatofpiMap) << " ("
+		    << fmt::format("{:0.2g}", sigmatofpiMap / tofpiMap * 100) << "%) " << tofkMap
+		    << "+/-" << fmt::format("{:0.2g}", sigmatofkMap) << " ("
+		    << fmt::format("{:0.2g}", sigmatofkMap / tofkMap * 100) << "%) " << tofpMap
+		    << "+/-" << fmt::format("{:0.2g}", sigmatofpMap) << " ("
+		    << fmt::format("{:0.2g}", sigmatofpMap / tofpMap * 100) << "%) " << std::endl;
+
+	  std::cout << "" << std::endl;
+	  std::cout << "Muon timing: tof mu " << tofmuMap
+                    << "+/-" << fmt::format("{:0.2g}", sigmatofmuMap) << " ("
+                    << fmt::format("{:0.2g}", sigmatofmuMap / tofmuMap * 100) << "%) " << std::endl;
+	  
+	}else{
+	  std::cout << "MuonExtenderWithMTD: tmtd " << tmtdMap << " +/- " << sigmatmtdMap
+                    << " t0 " << t0Map << " +/- " << sigmat0Map << " tof pi/K/p " << tofpiMap
+                    << "+/-" << fmt::format("{:0.2g}", sigmatofpiMap) << " ("
+                    << fmt::format("{:0.2g}", sigmatofpiMap / tofpiMap * 100) << "%) " << tofkMap
+                    << "+/-" << fmt::format("{:0.2g}", sigmatofkMap) << " ("
+                    << fmt::format("{:0.2g}", sigmatofkMap / tofkMap * 100) << "%) " << tofpMap
+                    << "+/-" << fmt::format("{:0.2g}", sigmatofpMap) << " ("
+                    << fmt::format("{:0.2g}", sigmatofpMap / tofpMap * 100) << "%) " << std::endl;
 	}
 	
       } else {
-        LogTrace("TrackExtenderWithMTD") << "Error in the MTD track refitting. This should not happen";
-	std::cout  << "Error in the MTD track refitting. This should not happen" << std::endl;
+        LogTrace("MuonExtenderWithMTD") << "Error in the MTD track refitting. This should not happen";
       }
     }
 
@@ -1227,9 +1298,7 @@ void TrackExtenderWithMTDT<TrackCollection>::produce(edm::Event& ev, const edm::
     ++itrack;
   }
 
-  std::cout << "Push results" << std::endl;
-  
-  ev.put(std::move(output));
+  auto outTrksHandle = ev.put(std::move(output));
   ev.put(std::move(extras));
   ev.put(std::move(outhits));
 
@@ -1280,19 +1349,19 @@ namespace {
     pair<bool, TrajectoryStateOnSurface> comp = layer->compatible(tsos, *prop, *estimator);
     if (comp.first) {
       const vector<DetLayer::DetWithState> compDets = layer->compatibleDets(tsos, *prop, *estimator);
-      LogTrace("TrackExtenderWithMTD") << "Hit search: Compatible dets " << compDets.size();           
+      LogTrace("MuonExtenderWithMTD") << "Hit search: Compatible dets " << compDets.size();
       if (!compDets.empty()) {
         for (const auto& detWithState : compDets) {
           auto range = hits.equal_range(detWithState.first->geographicalId(), cmp_for_detset);
           if (range.first == range.second) {
-            LogTrace("TrackExtenderWithMTD")
+            LogTrace("MuonExtenderWithMTD")
                 << "Hit search: no hit in DetId " << detWithState.first->geographicalId().rawId();
             continue;
           }
 
           auto pl = prop->propagateWithPath(tsos, detWithState.second.surface());
           if (pl.second == 0.) {
-            LogTrace("TrackExtenderWithMTD")
+            LogTrace("MuonExtenderWithMTD")
                 << "Hit search: no propagation to DetId " << detWithState.first->geographicalId().rawId();
             continue;
           }
@@ -1308,7 +1377,7 @@ namespace {
             for (const auto& hit : *detitr) {
               auto est = estimator->estimate(detWithState.second, hit);
               if (!est.first) {
-                LogTrace("TrackExtenderWithMTD")
+                LogTrace("MuonExtenderWithMTD")
                     << "Hit search: no compatible estimate in DetId " << detWithState.first->geographicalId().rawId()
                     << " for hit at pos (" << std::fixed << std::setw(14) << hit.globalPosition().x() << ","
                     << std::fixed << std::setw(14) << hit.globalPosition().y() << "," << std::fixed << std::setw(14)
@@ -1316,7 +1385,7 @@ namespace {
                 continue;
               }
 
-              LogTrace("TrackExtenderWithMTD")
+              LogTrace("MuonExtenderWithMTD")
                   << "Hit search: spatial compatibility DetId " << detWithState.first->geographicalId().rawId()
                   << " TSOS dx/dy " << std::fixed << std::setw(14)
                   << std::sqrt(detWithState.second.localError().positionError().xx()) << " " << std::fixed
@@ -1351,7 +1420,7 @@ namespace {
 }  // namespace
 
 template <class TrackCollection>
-TransientTrackingRecHit::ConstRecHitContainer TrackExtenderWithMTDT<TrackCollection>::tryBTLLayers(
+TransientTrackingRecHit::ConstRecHitContainer MuonExtenderWithMTDT<TrackCollection>::tryBTLLayers(
     const TrajectoryStateOnSurface& tsos,
     const Trajectory& traj,
     const float pmag2,
@@ -1371,8 +1440,13 @@ TransientTrackingRecHit::ConstRecHitContainer TrackExtenderWithMTDT<TrackCollect
   TransientTrackingRecHit::ConstRecHitContainer output;
   bestHit = MTDHitMatchingInfo();
   for (const DetLayer* ilay : layers) {
-    LogTrace("TrackExtenderWithMTD") << "Hit search: BTL layer at R= "
+    LogTrace("MuonExtenderWithMTD") << "Hit search: BTL layer at R= "
                                      << static_cast<const BarrelDetLayer*>(ilay)->specificSurface().radius();
+
+    if (doMuon){
+      std::cout << "Hit search: BTL layer at R= "
+		<< static_cast<const BarrelDetLayer*>(ilay)->specificSurface().radius() << std::endl;
+    }
 
     fillMatchingHits(ilay, tsos, traj, pmag2, pathlength0, trs0, hits, prop, bs, vtxTime, matchVertex, output, bestHit, doMuon);
   }
@@ -1381,7 +1455,7 @@ TransientTrackingRecHit::ConstRecHitContainer TrackExtenderWithMTDT<TrackCollect
 }
 
 template <class TrackCollection>
-TransientTrackingRecHit::ConstRecHitContainer TrackExtenderWithMTDT<TrackCollection>::tryETLLayers(
+TransientTrackingRecHit::ConstRecHitContainer MuonExtenderWithMTDT<TrackCollection>::tryETLLayers(
     const TrajectoryStateOnSurface& tsos,
     const Trajectory& traj,
     const float pmag2,
@@ -1407,7 +1481,11 @@ TransientTrackingRecHit::ConstRecHitContainer TrackExtenderWithMTDT<TrackCollect
     if (tsos.globalPosition().z() * diskZ < 0)
       continue;  // only propagate to the disk that's on the same side
 
-    LogTrace("TrackExtenderWithMTD") << "Hit search: ETL disk at Z = " << diskZ;
+    LogTrace("MuonExtenderWithMTD") << "Hit search: ETL disk at Z = " << diskZ;
+
+    if (doMuon){
+      std::cout	<< "Hit search: ETL disk at Z = " << diskZ << std::endl;
+    }
 
     fillMatchingHits(ilay, tsos, traj, pmag2, pathlength0, trs0, hits, prop, bs, vtxTime, matchVertex, output, bestHit, doMuon);
   }
@@ -1423,7 +1501,7 @@ TransientTrackingRecHit::ConstRecHitContainer TrackExtenderWithMTDT<TrackCollect
 }
 
 template <class TrackCollection>
-void TrackExtenderWithMTDT<TrackCollection>::fillMatchingHits(const DetLayer* ilay,
+void MuonExtenderWithMTDT<TrackCollection>::fillMatchingHits(const DetLayer* ilay,
                                                               const TrajectoryStateOnSurface& tsos,
                                                               const Trajectory& traj,
                                                               const float pmag2,
@@ -1470,7 +1548,7 @@ void TrackExtenderWithMTDT<TrackCollection>::fillMatchingHits(const DetLayer* il
   if (!hitsInLayer.empty()) {
     //check hits to pass minimum quality matching requirements
     auto const& firstHit = *hitsInLayer.begin();
-    LogTrace("TrackExtenderWithMTD") << "TrackExtenderWithMTD: matching trial 1: estChi2= " << firstHit.estChi2
+    LogTrace("MuonExtenderWithMTD") << "MuonExtenderWithMTD: matching trial 1: estChi2= " << firstHit.estChi2
                                      << " timeChi2= " << firstHit.timeChi2;
     if (firstHit.estChi2 < spaceChi2Cut && firstHit.timeChi2 < timeChi2Cut) {
       hitMatched = true;
@@ -1486,7 +1564,7 @@ void TrackExtenderWithMTDT<TrackCollection>::fillMatchingHits(const DetLayer* il
     find_hits(0, false);
     if (!hitsInLayer.empty()) {
       auto const& firstHit = *hitsInLayer.begin();
-      LogTrace("TrackExtenderWithMTD") << "TrackExtenderWithMTD: matching trial 2: estChi2= " << firstHit.estChi2
+      LogTrace("MuonExtenderWithMTD") << "MuonExtenderWithMTD: matching trial 2: estChi2= " << firstHit.estChi2
                                        << " timeChi2= " << firstHit.timeChi2;
       if (firstHit.timeChi2 < timeChi2Cut) {
         if (firstHit.estChi2 < spaceChi2Cut) {
@@ -1499,15 +1577,20 @@ void TrackExtenderWithMTDT<TrackCollection>::fillMatchingHits(const DetLayer* il
     }
   }
 
+  if (doMuon && hitMatched){
+    std::cout << "MuonExtenderWithMTD: matched hit with time: " << bestHit.hit->time()
+	      << " +/- " << bestHit.hit->timeError() << std::endl;
+  }
+  if (doMuon && !hitMatched){
+    std::cout << "WARNING! MuonExtenderWithMTD: no matched hit" << std::endl;
+  }
+
 #ifdef EDM_ML_DEBUG
   if (hitMatched) {
-    LogTrace("TrackExtenderWithMTD") << "TrackExtenderWithMTD: matched hit with time: " << bestHit.hit->time()
+    LogTrace("MuonExtenderWithMTD") << "MuonExtenderWithMTD: matched hit with time: " << bestHit.hit->time()
                                      << " +/- " << bestHit.hit->timeError();
-    std::cout << "TrackExtenderWithMTD: matched hit with time: " << bestHit.hit->time()
-	      << " +/- " << bestHit.hit->timeError() << std::endl;
   } else {
-    LogTrace("TrackExtenderWithMTD") << "TrackExtenderWithMTD: no matched hit";
-    std::cout << "TrackExtenderWithMTD: no matched hit" << std::endl;
+    LogTrace("MuonExtenderWithMTD") << "MuonExtenderWithMTD: no matched hit";
   }
 #endif
 }
@@ -1515,7 +1598,7 @@ void TrackExtenderWithMTDT<TrackCollection>::fillMatchingHits(const DetLayer* il
 //below is unfortunately ripped from other places but
 //since track producer doesn't know about MTD we have to do this
 template <class TrackCollection>
-reco::Track TrackExtenderWithMTDT<TrackCollection>::buildTrack(const reco::TrackRef& orig,
+reco::Track MuonExtenderWithMTDT<TrackCollection>::buildTrack(const reco::TrackRef& orig,
                                                                const Trajectory& traj,
                                                                const Trajectory& trajWithMtd,
                                                                const reco::BeamSpot& bs,
@@ -1535,6 +1618,8 @@ reco::Track TrackExtenderWithMTDT<TrackCollection>::buildTrack(const reco::Track
                                                                float& sigmatofp,
 							       float& sigmatofmu,
 							       bool doMuon) const {
+
+  std::cout << "start to build track" << std::endl;
   
   TrajectoryStateClosestToBeamLine tscbl;
   bool tsbcl_status = getTrajectoryStateClosestToBeamLine(traj, bs, thePropagator, tscbl);
@@ -1597,9 +1682,16 @@ reco::Track TrackExtenderWithMTDT<TrackCollection>::buildTrack(const reco::Track
       }
     }
 
-    LogTrace("TrackExtenderWithMTD") << "TrackExtenderWithMTD: selected #hits " << ihitcount << " from ETL "
+    LogTrace("MuonExtenderWithMTD") << "MuonExtenderWithMTD: selected #hits " << ihitcount << " from ETL "
                                      << ietlcount;
 
+    if (doMuon) {
+      std::cout << "MuonExtenderWithMTD: selected #hits " << ihitcount << " from ETL "
+		<< ietlcount << std::endl;
+
+      std::cout << "New pathLength with MTD = " << pathlength << std::endl;
+    }
+      
     auto ihit1 = trajWithMtd.measurements().cbegin(); // Assumes the last measurement is the MTD Hit, not true for muons
 
     if (doMuon) {
@@ -1607,6 +1699,9 @@ reco::Track TrackExtenderWithMTDT<TrackCollection>::buildTrack(const reco::Track
 	const auto& hit = it->recHit();
 	if (hit->geographicalId().det() == DetId::Forward && ForwardSubdetector(hit->geographicalId().subdetId()) == FastTime){
 	  ihit1 = it;
+
+	  std::cout << "found hit" << std::endl;
+	  
 	  break;
 	}
       }
@@ -1631,6 +1726,9 @@ reco::Track TrackExtenderWithMTDT<TrackCollection>::buildTrack(const reco::Track
         trs.removeFirstSegment();
         const MTDTrackingRecHit* mtdhit1 = static_cast<const MTDTrackingRecHit*>((*ihit1).recHit()->hit());
         const MTDTrackingRecHit* mtdhit2 = static_cast<const MTDTrackingRecHit*>((*(ihit1 + 1)).recHit()->hit());
+
+	if (doMuon)
+	  std::cout << "<----------- COMPUTE TIME OF FLIGHT" << std::endl;
 	
         TrackTofPidInfo tofInfo = computeTrackTofPidInfo(
 							 lastStep.second, etlpathlength, trs, mtdhit1->time(), mtdhit1->timeError(), 0.f, 0.f, true, TofCalc::kCost, SigmaTofCalc::kCost, doMuon);
@@ -1640,10 +1738,13 @@ reco::Track TrackExtenderWithMTDT<TrackCollection>::buildTrack(const reco::Track
         float err1 = tofInfo.dterror2;
         float err2 = mtdhit2->timeError() * mtdhit2->timeError();
         if (cms_rounding::roundIfNear0(err1) == 0.f || cms_rounding::roundIfNear0(err2) == 0.f) {
-          edm::LogError("TrackExtenderWithMTD")
+          edm::LogError("MuonExtenderWithMTD")
               << "MTD tracking hits with zero time uncertainty: " << err1 << " " << err2;
 
-	}else {
+	  if (doMuon) {
+	    std::cout << "MTD tracking hits with zero time uncertainty: " << err1 << " " << err2 << std::endl;
+	  }
+        } else {
           if ((tofInfo.dt - mtdhit2->time()) * (tofInfo.dt - mtdhit2->time()) < (err1 + err2) * etlTimeChi2Cut_) {
             //
             // Subtract the ETL time of flight from the outermost measurement, and combine it in a weighted average with the innermost
@@ -1655,8 +1756,8 @@ reco::Track TrackExtenderWithMTDT<TrackCollection>::buildTrack(const reco::Track
             thit = (tofInfo.dt * err1 + mtdhit2->time() * err2) * thiterror;
             thiterror = std::sqrt(thiterror);
             thitpos = mtdhit2->globalPosition();
-            LogTrace("TrackExtenderWithMTD")
-                << "TrackExtenderWithMTD: p trk = " << p.mag() << " ETL hits times/errors: 1) " << mtdhit1->time()
+            LogTrace("MuonExtenderWithMTD")
+                << "MuonExtenderWithMTD: p trk = " << p.mag() << " ETL hits times/errors: 1) " << mtdhit1->time()
                 << " +/- " << mtdhit1->timeError() << " , 2) " << mtdhit2->time() << " +/- " << mtdhit2->timeError()
                 << " extrapolated time1: " << tofInfo.dt << " +/- " << tofInfo.dterror << " average = " << thit
                 << " +/- " << thiterror << "\n    hit1 pos: " << mtdhit1->globalPosition()
@@ -1677,13 +1778,16 @@ reco::Track TrackExtenderWithMTDT<TrackCollection>::buildTrack(const reco::Track
         }
       }
     } else {
-      edm::LogInfo("TrackExtenderWithMTD")
+      edm::LogInfo("MuonExtenderWithMTD")
           << "MTD hits #" << ihitcount << "ETL hits #" << ietlcount << " anomalous pattern, skipping...";      
+      std::cout << "MTD hits #" << ihitcount << "ETL hits #" << ietlcount << " anomalous pattern, skipping..." << std::endl;
     }
 
     if (validmtd && validpropagation) {
       //here add the PID uncertainty for later use in the 1st step of 4D vtx reconstruction
 
+      if (doMuon)
+	std::cout << "<----------- COMPUTE TIME OF FLIGHT" << std::endl;
       TrackTofPidInfo tofInfo = computeTrackTofPidInfo(
 						       p.mag2(), pathlength, trs, thit, thiterror, 0.f, 0.f, true, TofCalc::kSegm, SigmaTofCalc::kCost, doMuon);
 
@@ -1705,13 +1809,15 @@ reco::Track TrackExtenderWithMTDT<TrackCollection>::buildTrack(const reco::Track
       sigmatofmu = tofInfo.sigma_dt_mu;
     }
   }
+
+  std::cout << "finished to build track" << std::endl;
   
   return routput();
 }
 
 template <class TrackCollection>
-reco::TrackExtra TrackExtenderWithMTDT<TrackCollection>::buildTrackExtra(const Trajectory& trajectory) const {
-  static const string metname = "TrackExtenderWithMTD";
+reco::TrackExtra MuonExtenderWithMTDT<TrackCollection>::buildTrackExtra(const Trajectory& trajectory) const {
+  static const string metname = "MuonExtenderWithMTD";
 
   const Trajectory::RecHitContainer transRecHits = trajectory.recHits();
 
@@ -1786,7 +1892,7 @@ reco::TrackExtra TrackExtenderWithMTDT<TrackCollection>::buildTrackExtra(const T
 }
 
 template <class TrackCollection>
-string TrackExtenderWithMTDT<TrackCollection>::dumpLayer(const DetLayer* layer) const {
+string MuonExtenderWithMTDT<TrackCollection>::dumpLayer(const DetLayer* layer) const {
   stringstream output;
 
   const BoundSurface* sur = nullptr;
@@ -1808,6 +1914,6 @@ string TrackExtenderWithMTDT<TrackCollection>::dumpLayer(const DetLayer* layer) 
 #include "DataFormats/TrackReco/interface/TrackFwd.h"
 #include "DataFormats/GsfTrackReco/interface/GsfTrack.h"
 #include "DataFormats/GsfTrackReco/interface/GsfTrackFwd.h"
-typedef TrackExtenderWithMTDT<reco::TrackCollection> TrackExtenderWithMTD;
+typedef MuonExtenderWithMTDT<reco::TrackCollection> MuonExtenderWithMTD;
 
-DEFINE_FWK_MODULE(TrackExtenderWithMTD);
+DEFINE_FWK_MODULE(MuonExtenderWithMTD);
