@@ -13,6 +13,7 @@
 <use name="TrackPropagation/SteppingHelixPropagator"/>
 <use name="RecoMuon/Records"/>
 <use name="RecoMuon/DetLayers"/>
+<use name="RecoMuon/TrackingTools"/>
 <use name="SimTracker/TrackerHitAssociation"/>
 <use name="SimTracker/TrackTriggerAssociation"/>
 <use name="SimDataFormats/Associations"/>
@@ -21,6 +22,10 @@
 <use name="SimGeneral/TrackingAnalysis"/>
 <use name="SimTracker/TrackAssociation"/>
 <use name="CommonTools/Utils"/>
+<use name="DataFormats/TrackReco"/>
+<use name="TrackingTools/TrackRefitter"/>
+<use name="TrackingTools/TransientTrack"/>
+<use name="RecoMuon/GlobalTrackingTools"/>
 <use name="DataFormats/RecoCandidate"/>
 <use name="DataFormats/Common"/>
 <use name="Geometry/Records"/>

@@ -148,8 +148,13 @@ void drawBDTEff_binary(
 
   vector<Color_t> v_color = {
     kBlack,
-    kRed,
-    kBlue,
+    static_cast<short>(TColor::GetColor("#5790fc")),
+    static_cast<short>(TColor::GetColor("#f89c20")),
+    static_cast<short>(TColor::GetColor("#e42536")),
+    static_cast<short>(TColor::GetColor("#964a8b")),
+    static_cast<short>(TColor::GetColor("#9c9ca1")),
+    static_cast<short>(TColor::GetColor("#7a21dd")),
+
     kMagenta,
 
     kGreen+2,
@@ -158,8 +163,14 @@ void drawBDTEff_binary(
 
   vector<int> v_marker = {
     20,
+    21,
+    22,
     20,
+    21,
+    22,
     20,
+    21,
+    22,
     20,
     20,
     20,
@@ -179,60 +190,53 @@ void drawBDTEff_binary(
     range.at(2).at(2) = 141;
   }
 
+  vector<TString> types_file = {
+    "../Analyzer/OI_default.root",
+    "../Analyzer/OI_default.root",
+    "../Analyzer/OI_default.root",
+    // "../Analyzer/OI_default.root",
+    // "../Analyzer/OI_FromL1.root",
+    // "../Analyzer/OI_FromL1Tk.root",
+  };
+
   vector<TString> types = {
-    "Eff/num_Eff_L1Tk_"+eff_tag+"_genpt26",
-    "Eff/num_Eff_L1Tk_"+eff_tag+"_genpt26",
-    "Eff/num_Eff_L1Tk_"+eff_tag+"_genpt26",
-    "Eff/num_Eff_L1Tk_"+eff_tag+"_genpt26",
-    "Eff/num_Eff_L1Tk_"+eff_tag+"_genpt26",
-    "Eff/num_Eff_L1Tk_"+eff_tag+"_genpt26",
+    "Eff/num_Eff_L1Muon_genpt26",
+    "Eff/num_Eff_L1TkMuon_genpt26",
+    "Eff/num_Eff_L2Muon_genpt26",
+    
+    // "Eff/num_Eff_L3OI_genpt26",
+    // "Eff/num_Eff_L3OI_genpt26",
+    // "Eff/num_Eff_L3OI_genpt26",
+
+    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
+    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
+    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
+
+
   };
 
   vector<TString> types_den = {
-    "Eff/den_Eff_L1Tk_"+eff_tag+"_genpt26",
-    "Eff/den_Eff_L1Tk_"+eff_tag+"_genpt26",
-    "Eff/den_Eff_L1Tk_"+eff_tag+"_genpt26",
-    "Eff/den_Eff_L1Tk_"+eff_tag+"_genpt26",
-    "Eff/den_Eff_L1Tk_"+eff_tag+"_genpt26",
-    "Eff/den_Eff_L1Tk_"+eff_tag+"_genpt26",
-  };
+    "Eff/den_Eff_L1Muon_genpt26",
+    "Eff/den_Eff_L1TkMuon_genpt26",
+    "Eff/den_Eff_L2Muon_genpt26",
+    
+    // "Eff/den_Eff_L3OI_genpt26",
+    // "Eff/den_Eff_L3OI_genpt26",
+    // "Eff/den_Eff_L3OI_genpt26",
 
-  vector<TString> types_file = {
-    //TString::Format("../Outputs_%s/hist-%s-%s_No-BDT.root", ver.Data(), ver.Data(), tag.Data()),
-    // TString::Format("../Output_Binary/Outputs_%s/hist-%s-%s_Sort_unlim-BDT.root", ver.Data(), ver.Data(), tag.Data()),
-    // TString::Format("../Output_Binary/Outputs_%s/hist-%s-%s_Sort_100-BDT.root", ver.Data(), ver.Data(), tag.Data()),
-    // TString::Format("../Output_Binary/Outputs_%s/hist-%s-%s_Sort_50-BDT.root", ver.Data(), ver.Data(), tag.Data()),
-    // TString::Format("../Output_Binary/Outputs_%s/hist-%s-%s_Sort_10-BDT.root", ver.Data(), ver.Data(), tag.Data()),
-    // TString::Format("../Output_Binary/Outputs_%s/hist-%s-%s_Sort_0-BDT.root", ver.Data(), ver.Data(), tag.Data()),
-    //TString::Format("../Outputs_%s/hist-%s-%s_sort100-BDT.root", ver.Data(), ver.Data(), tag.Data()),
-    //TString::Format("../Outputs_%s/hist-%s-%s_sort50-BDT.root", ver.Data(), ver.Data(), tag.Data()),
-    //TString::Format("../Outputs_%s/hist-%s-%s_sort10-BDT.root", ver.Data(), ver.Data(), tag.Data()),
-    //TString::Format("../Outputs_%s/hist-%s-%s_sort0-BDT.root", ver.Data(), ver.Data(), tag.Data()),
-    // "../Output_Binary/Outputs_Phase2_Spring24_v3/hist-Phase2_Spring24_v3-Phase2_DYToLL_M50-BDT.root",
-    // "../Output_Binary/Outputs_Phase2_Spring24_v4/hist-Phase2_Spring24_v4-Phase2_DYToLL_M50-BDT.root"
-    // "../Output_Binary/Outputs_Phase2_Spring24_vGenTrack/hist-Phase2_Spring24_vGenTrack-Phase2_DYToLL_M50_PU200_patatrack-BDT.root",
-    // "../Output_Binary/Outputs_Phase2_Spring24_vPataTrack/hist-Phase2_Spring24_vPataTrack-Phase2_DYToLL_M50_PU200_patatrack-BDT.root"
-
-
-    "../Output_Binary/Outputs_Phase2_Spring24_default_v2/hist-Phase2_Spring24_default_v2-Phase2_DYToLL_M50_PU200_default-BDT.root",
-
-    "../Output_Binary/Outputs_Phase2_Spring24_Iter0_pixel_v2/hist-Phase2_Spring24_Iter0_pixel_v2-Phase2_DYToLL_M50_PU200_Iter0_pixel-BDT.root",
-    "../Output_Binary/Outputs_Phase2_Spring24_Iter0_pata_v2/hist-Phase2_Spring24_Iter0_pata_v2-Phase2_DYToLL_M50_PU200_Iter0_pata-BDT.root",
-
-    "../Output_Binary/Outputs_Phase2_Spring24_Iter0_HighPurity_pixel_v2/hist-Phase2_Spring24_Iter0_HighPurity_pixel_v2-Phase2_DYToLL_M50_PU200_Iter0_HighPurity_pixel-BDT.root",
-
-    "../Output_Binary/Outputs_Phase2_Spring24_Iter0_HighPurity_pata_v2/hist-Phase2_Spring24_Iter0_HighPurity_pata_v2-Phase2_DYToLL_M50_PU200_Iter0_HighPurity_pata-BDT.root",
-    "../Output_Binary/Outputs_Phase2_Spring24_Iter02_HighPurity_pata_v2/hist-Phase2_Spring24_Iter02_HighPurity_pata_v2-Phase2_DYToLL_M50_PU200_Iter02_HighPurity_pata-BDT.root",
-
+    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
+    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
+    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
   };
 
   vector<TString> types_str = {
-    "default",
-    "Iter0 pixel track",
-    "Iter0 patatrack",
-    "Iter0 HighPurity pixel track",
-    "Iter0 HighPurity pata track",
-    "Iter03 HighPurity pata track"
+    "L1 Muon",
+    "L1 TkMuon",
+    "L2 Muon (From L1 TkMuon)",
+
+    // "OI FromL2 (default)",
+    // "OI FromL1",
+    // "OI FromL1Tk",
 
     // "Unlimited",
     // "Maximum # of seeds = 100",
@@ -245,23 +249,23 @@ void drawBDTEff_binary(
 
     double xmin = range.at(ivar).at(1);
     double xmax = range.at(ivar).at(2);
-    double ymin = 0.0;
-    double ymax = 1.5;
+    double ymin = 0.8;
+    double ymax = 1.1;
 
-    if(!v_var.at(ivar).Contains("pt")) {
-      ymin = 0.8;
-      ymax = 1.15;
-    }
+    // if(!v_var.at(ivar).Contains("pt")) {
+    //   ymin = 0.8;
+    //   ymax = 1.15;
+    // }
 
-    if(eff_tag=="L3Iter0FromL1" && !v_var.at(ivar).Contains("pt")) {
-      ymin = 0.4;
-      ymax = 1.15;
-    }
+    // if(eff_tag=="L3Iter0FromL1" && !v_var.at(ivar).Contains("pt")) {
+    //   ymin = 0.4;
+    //   ymax = 1.15;
+    // }
 
-    if(eff_tag=="L3Iter2FromL1") {
-      ymin = 0.0;
-      ymax = 0.8;
-    }
+    // if(eff_tag=="L3Iter2FromL1") {
+    //   ymin = 0.0;
+    //   ymax = 0.8;
+    // }
 
 
     TString canvasName = TString::Format("Eff_%s_%s_%s", tag.Data(), eff_tag.Data(), v_var.at(ivar).Data() );
@@ -287,18 +291,19 @@ void drawBDTEff_binary(
       std::cout << the_type_num << std::endl;
       std::cout << the_type_den << std::endl;
       std::cout << the_type_str << std::endl;
+      std::cout << fileName << std::endl;
 
 
       TString titleX = GetTitleX(v_var.at(ivar)+"_gen");
-      TString titleY = "L3 reconstruction efficiency";
+      TString titleY = "L3 reconstruction eff";
 
       TString den_name = TString::Format("%s_%s", the_type_den.Data(), v_var.at(ivar).Data() );
       TString num_name = TString::Format("%s_%s", the_type_num.Data(), v_var.at(ivar).Data() );
 
-      if(v_var.at(ivar) == "pt") {
-        den_name = den_name.ReplaceAll("genpt26", "L3pt24");
-        num_name = num_name.ReplaceAll("genpt26", "L3pt24");
-      }
+      // if(v_var.at(ivar) == "pt") {
+      //   den_name = den_name.ReplaceAll("genpt26", "L3pt24");
+      //   num_name = num_name.ReplaceAll("genpt26", "L3pt24");
+      // }
 
       //std::cout << "Filename : " << fileName << " , den_name : " << den_name << std::endl;
       TH1F* den = Get_Hist( fileName, den_name );
@@ -331,8 +336,8 @@ void drawBDTEff_binary(
         if(g->GetPointY(ip) == 0.)  g->SetPointEYhigh(ip, 0.0);
       }
 
-      double markersize = 2.0 - 0.5*i;
-      if(markersize < 1.0)
+      double markersize = 1.0;
+      // if(markersize < 1.0)
         markersize = 1.0;
 
       g->SetTitle("");
