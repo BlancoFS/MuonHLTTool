@@ -3,7 +3,25 @@
 # from MuonHLTTool.MuonHLTNtupler.customizerForMuonHLTNtupler import *
 # process = customizerFuncForMuonHLTNtupler(process, "MYHLT")
 
+from concurrent.futures import process
+
+from concurrent.futures import process
+
 import FWCore.ParameterSet.Config as cms
+
+def cutomizerFuncForHltGeneralTracks(process, newProcessName = "MYHLT"):
+  
+  process.hltInitialStepTracks.TrajectoryInEvent = True
+  process.hltInitialStepTrackSelectionHighPurity.copyTrajectories = True
+  process.hltGeneralTracks = TrackCollectionMerger.clone(
+	      trackProducers   = ["hltInitialStepTrackSelectionHighPurity"],
+	      inputClassifiers = ["hltInitialStepTrackCutClassifier"],
+        foundHitBonus  = 5.0,
+	      lostHitPenalty = 5.0,
+        minQuality = cms.string('highPurity'),
+        copyExtras = cms.untracked.bool(True),
+        copyTrajectories = cms.untracked.bool(True),
+  )
 
 def customizerFuncForMuonHLTNtupler(process, newProcessName = "MYHLT"):
     if hasattr(process, "DQMOutput"):

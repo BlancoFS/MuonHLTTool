@@ -13,6 +13,7 @@
 <use name="TrackPropagation/SteppingHelixPropagator"/>
 <use name="RecoMuon/Records"/>
 <use name="RecoMuon/DetLayers"/>
+<use name="RecoMuon/TrackingTools"/>
 <use name="SimTracker/TrackerHitAssociation"/>
 <use name="SimTracker/TrackTriggerAssociation"/>
 <use name="SimDataFormats/Associations"/>
@@ -20,7 +21,12 @@
 <use name="SimTracker/Common"/>
 <use name="SimGeneral/TrackingAnalysis"/>
 <use name="SimTracker/TrackAssociation"/>
+<use name="SimMuon/DTDigitizer"/>
 <use name="CommonTools/Utils"/>
+<use name="DataFormats/TrackReco"/>
+<use name="TrackingTools/TrackRefitter"/>
+<use name="TrackingTools/TransientTrack"/>
+<use name="RecoMuon/GlobalTrackingTools"/>
 <use name="DataFormats/RecoCandidate"/>
 <use name="DataFormats/Common"/>
 <use name="Geometry/Records"/>
@@ -31,6 +37,9 @@
 <use name="DataFormats/L1TrackTrigger"/>
 <use name="DataFormats/Phase2TrackerDigi"/>
 <use name="DataFormats/L1TCorrelator"/>
+<use name="DataFormats/L1Trigger"/>
+<use name="DataFormats/L1TMuonPhase2"/>
 <use name="TrackingTools/TrackAssociator"/>
+<use name="RecoTracker/TkDetLayers"/>
 <!--   <flags   EDM_PLUGIN="1"/> -->
 <flags EDM_PLUGIN="1"/>
