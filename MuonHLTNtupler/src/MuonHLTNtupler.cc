@@ -146,6 +146,7 @@ void MuonHLTNtupler::Init()
     track_lastTSOS_isValid_[i] = 0;
     track_simTrackId_[i] = -1;
     track_simTrack_pdgId_[i] = -999;
+    track_bestVotes_[i] = -1;
     track_simTrack_pt_[i] = -999;
     track_simTrack_eta_[i] = -999;
     track_simTrack_phi_[i] = -999;
@@ -276,6 +277,7 @@ void MuonHLTNtupler::Make_Branch()
   ntuple_->Branch("track_lastTSOS_isValid", &track_lastTSOS_isValid_, "track_lastTSOS_isValid[nTracks]/I");
   ntuple_->Branch("track_simTrackId", &track_simTrackId_, "track_simTrackId[nTracks]/I");
   ntuple_->Branch("track_simTrack_pdgId", &track_simTrack_pdgId_, "track_simTrack_pdgId[nTracks]/I");
+  ntuple_->Branch("track_bestVotes", &track_bestVotes_, "track_bestVotes[nTracks]/I");
   ntuple_->Branch("track_simTrack_pt", &track_simTrack_pt_, "track_simTrack_pt[nTracks]/F");
   ntuple_->Branch("track_simTrack_eta", &track_simTrack_eta_, "track_simTrack_eta[nTracks]/F");
   ntuple_->Branch("track_simTrack_phi", &track_simTrack_phi_, "track_simTrack_phi[nTracks]/F");
@@ -378,6 +380,7 @@ void MuonHLTNtupler::Fill_Tracks_And_Segments(const edm::Event& iEvent,
                                                const edm::EventSetup& iSetup) {
 
   bool debug = true;
+  bool run_ME0 = false; // To be understood why the ME0 geometry is not properly retrieved in the EventSetup
 
   if (debug) {
     std::cout << "\n\n";
@@ -426,7 +429,7 @@ void MuonHLTNtupler::Fill_Tracks_And_Segments(const edm::Event& iEvent,
   std::map<unsigned int, const SimTrack*> simTrackById;
   for (const auto& st : *simTracks) {
     if (std::abs(st.type()) != 13) continue;
-    if (!st.isPrimary())           continue;
+    // if (!st.isPrimary())           continue; // We want all the muons
     simTrackToPdgId[st.trackId()] = st.type();
     simTrackById  [st.trackId()] = &st;
   }
@@ -438,26 +441,32 @@ void MuonHLTNtupler::Fill_Tracks_And_Segments(const edm::Event& iEvent,
   edm::Handle<reco::TrackCollection> hltTracks;
   iEvent.getByToken(t_hltGeneralTracks_, hltTracks);
 
-  edm::Handle<TrajTrackAssociationCollection> trajTrackAssoc;
-  iEvent.getByToken(t_trajTrackAssoc_, trajTrackAssoc);
-
-  // Build a quick map  TrackRef → TrajectoryRef  from the association map
-  std::map<reco::TrackRef, edm::Ref<std::vector<Trajectory>>> trackToTraj;
-  if (trajTrackAssoc.isValid()) {
-    for (const auto& assoc : *trajTrackAssoc)
-      trackToTraj[assoc.val] = assoc.key;
-  }
-
-  // TrackerHitAssociator: maps each tracker RecHit to its contributing SimTrack(s)
-  TrackerHitAssociator hitAssociator(iEvent, trackerHitAssociatorConfig_);
-
   int _nTracks = 0;
-
   if (hltTracks.isValid()) {
+
+    edm::Handle<TrajTrackAssociationCollection> trajTrackAssoc;
+    iEvent.getByToken(t_trajTrackAssoc_, trajTrackAssoc);
+
+    // Build a quick map  TrackRef → TrajectoryRef  from the association map
+    std::map<reco::TrackRef, edm::Ref<std::vector<Trajectory>>> trackToTraj;
+    if (trajTrackAssoc.isValid()) {
+      for (const auto& assoc : *trajTrackAssoc)
+        trackToTraj[assoc.val] = assoc.key;
+    }
+
+    // TrackerHitAssociator: maps each tracker RecHit to its contributing SimTrack(s)
+    TrackerHitAssociator hitAssociator(iEvent, trackerHitAssociatorConfig_);
+
+    if (debug) {
+      std::cout << "Processing " << hltTracks->size() << " HLT tracks...\n";
+    }
+  
     for (size_t iTrack = 0; iTrack < hltTracks->size(); ++iTrack) {
 
       const reco::Track& track = (*hltTracks)[iTrack];
       reco::TrackRef    tRef(hltTracks, iTrack);
+
+      if (track.pt()<=2.0) continue; // Skip very low-pt tracks to reduce contamination from combinatorial fakes
 
       // -- Basic kinematics and fit quality --
       track_pt_         [_nTracks] = track.pt();
@@ -505,33 +514,33 @@ void MuonHLTNtupler::Fill_Tracks_And_Segments(const edm::Event& iEvent,
         const Trajectory& traj = *(trajIt->second);
         if (!traj.empty()) {
           const TrajectoryMeasurement& lastMeas = traj.lastMeasurement();
-
+      
           // Prefer the updated (smoothed) TSOS; fall back to forward prediction
           const TrajectoryStateOnSurface& lastTSOS =
             lastMeas.updatedState().isValid() ? lastMeas.updatedState()
                                               : lastMeas.forwardPredictedState();
-
+      
           if (lastTSOS.isValid()) {
             const GlobalPoint&  pos = lastTSOS.globalPosition();
             const GlobalVector& mom = lastTSOS.globalMomentum();
-
+      
             track_lastTSOS_x_  [_nTracks] = pos.x();
             track_lastTSOS_y_  [_nTracks] = pos.y();
             track_lastTSOS_z_  [_nTracks] = pos.z();
             track_lastTSOS_px_ [_nTracks] = mom.x();
             track_lastTSOS_py_ [_nTracks] = mom.y();
             track_lastTSOS_pz_ [_nTracks] = mom.z();
-
+      
             // q/p from local parameters (same sign convention as Kalman)
             track_lastTSOS_qoverp_[_nTracks] =
               lastTSOS.localParameters().qbp() * mom.mag(); // = q / |p|
-
+      
             // lambda = pi/2 - polar angle (dip angle, signed)
             track_lastTSOS_lambda_[_nTracks] =
               static_cast<float>(M_PI / 2.0) - mom.theta();
-
+      
             track_lastTSOS_isValid_[_nTracks] = 1;
-
+      
             if (debug) {
               std::cout << "  Track " << _nTracks
                         << ": last TSOS at (" << pos.x() << ", "
@@ -576,15 +585,25 @@ void MuonHLTNtupler::Fill_Tracks_And_Segments(const edm::Event& iEvent,
         }
       }
 
-      if (bestVotes > 0) {
+      // Remove very low pT tracks that cannot reach the muon system and are likely to be fake matches to low-energy secondaries in the tracker
+      // pT threshold is somewhat arbitrary and can be tuned; here we choose 2 GeV as a reasonable value for muons to reach the muon system
+      if (bestVotes > 0 && track.pt() >= 2.0) {
         auto stIt = simTrackById.find(bestId);
+
         if (stIt != simTrackById.end()) {
           const SimTrack* st = stIt->second;
-          track_simTrackId_    [_nTracks] = static_cast<int>(bestId);
-          track_simTrack_pdgId_[_nTracks] = st->type();
-          track_simTrack_pt_   [_nTracks] = st->momentum().pt();
-          track_simTrack_eta_  [_nTracks] = st->momentum().eta();
-          track_simTrack_phi_  [_nTracks] = st->momentum().phi();
+
+          float relDiff = std::abs(track.pt() - st->momentum().pt()) / st->momentum().pt();
+          if (relDiff <= 0.5){
+
+            track_simTrackId_    [_nTracks] = static_cast<int>(bestId);
+            track_bestVotes_     [_nTracks] = bestVotes;
+            track_simTrack_pdgId_[_nTracks] = st->type();
+            track_simTrack_pt_   [_nTracks] = st->momentum().pt();
+            track_simTrack_eta_  [_nTracks] = st->momentum().eta();
+            track_simTrack_phi_  [_nTracks] = st->momentum().phi();
+
+          } // Else do not store the SimTrack match if the pT does not match well, to avoid mismatches to low-energy secondaries
         }
       }
 
@@ -595,7 +614,10 @@ void MuonHLTNtupler::Fill_Tracks_And_Segments(const edm::Event& iEvent,
                   << " phi=" << track.phi()
                   << " nHits=" << track.numberOfValidHits()
                   << " → SimTrack " << track_simTrackId_[_nTracks]
-                  << " (pdgId=" << track_simTrack_pdgId_[_nTracks] << ")"
+                  << " (pdgId=" << track_simTrack_pdgId_[_nTracks] << ")" 
+                  << " pT=" << track_simTrack_pt_[_nTracks]
+                  << " eta=" << track_simTrack_eta_[_nTracks]
+                  << " phi=" << track_simTrack_phi_[_nTracks]
                   << std::endl;
       }
 
@@ -935,87 +957,90 @@ void MuonHLTNtupler::Fill_Tracks_And_Segments(const edm::Event& iEvent,
   // 5.  ME0 Segments
   // ===========================================================================
 
-  edm::Handle<ME0SegmentCollection> me0Segments;
-  iEvent.getByToken(t_me0Segments_, me0Segments);
+  if (run_ME0) {
+    edm::Handle<ME0SegmentCollection> me0Segments;
+    iEvent.getByToken(t_me0Segments_, me0Segments);
 
-  int _nME0Seg = 0;
+    int _nME0Seg = 0;
+    if (debug) {
+      std::cout << "Processing " << me0Segments->size() << " ME0 segments \n";
+    }
+    if (me0Segments.isValid()) {
+      for (auto segIt = me0Segments->begin(); segIt != me0Segments->end(); ++segIt) {
 
-  if (me0Segments.isValid()) {
-    for (auto segIt = me0Segments->begin(); segIt != me0Segments->end(); ++segIt) {
+        const ME0Segment& seg = *segIt;
+        ME0DetId          mid = seg.me0DetId();
+        const GeomDet*   gdet = me0Geom->idToDet(mid);
 
-      const ME0Segment& seg = *segIt;
-      ME0DetId          mid = seg.me0DetId();
-      const GeomDet*   gdet = me0Geom->idToDet(mid);
+        GlobalPoint  gp = gdet->toGlobal(seg.localPosition());
+        GlobalVector gv = gdet->toGlobal(seg.localDirection());
 
-      GlobalPoint  gp = gdet->toGlobal(seg.localPosition());
-      GlobalVector gv = gdet->toGlobal(seg.localDirection());
+        // Geometry
+        me0Seg_x_  [_nME0Seg] = gp.x();
+        me0Seg_y_  [_nME0Seg] = gp.y();
+        me0Seg_z_  [_nME0Seg] = gp.z();
+        me0Seg_dx_ [_nME0Seg] = gv.x();
+        me0Seg_dy_ [_nME0Seg] = gv.y();
+        me0Seg_dz_ [_nME0Seg] = gv.z();
+        me0Seg_eta_[_nME0Seg] = gp.eta();
+        me0Seg_phi_[_nME0Seg] = gp.phi();
 
-      // Geometry
-      me0Seg_x_  [_nME0Seg] = gp.x();
-      me0Seg_y_  [_nME0Seg] = gp.y();
-      me0Seg_z_  [_nME0Seg] = gp.z();
-      me0Seg_dx_ [_nME0Seg] = gv.x();
-      me0Seg_dy_ [_nME0Seg] = gv.y();
-      me0Seg_dz_ [_nME0Seg] = gv.z();
-      me0Seg_eta_[_nME0Seg] = gp.eta();
-      me0Seg_phi_[_nME0Seg] = gp.phi();
+        // DetId
+        me0Seg_region_ [_nME0Seg] = mid.region();
+        me0Seg_station_[_nME0Seg] = mid.station();
+        me0Seg_chamber_[_nME0Seg] = mid.chamber();
 
-      // DetId
-      me0Seg_region_ [_nME0Seg] = mid.region();
-      me0Seg_station_[_nME0Seg] = mid.station();
-      me0Seg_chamber_[_nME0Seg] = mid.chamber();
+        // Quality
+        me0Seg_nHits_[_nME0Seg] = seg.nRecHits();
+        me0Seg_chi2_ [_nME0Seg] = static_cast<float>(seg.chi2());
+        me0Seg_ndof_ [_nME0Seg] = seg.degreesOfFreedom();
 
-      // Quality
-      me0Seg_nHits_[_nME0Seg] = seg.nRecHits();
-      me0Seg_chi2_ [_nME0Seg] = static_cast<float>(seg.chi2());
-      me0Seg_ndof_ [_nME0Seg] = seg.degreesOfFreedom();
+        // SimMuon matching via ME0 digi–sim links
+        // ME0DigiSimLink has strip() and SimTrackId(), same pattern as GEM.
+        std::map<unsigned int, int> votes;
 
-      // SimMuon matching via ME0 digi–sim links
-      // ME0DigiSimLink has strip() and SimTrackId(), same pattern as GEM.
-      std::map<unsigned int, int> votes;
+        if (me0DigiSimLinks.isValid()) {
+          for (const ME0RecHit& rh : seg.specificRecHits()) {
+            ME0DetId rhId   = rh.me0Id();
 
-      if (me0DigiSimLinks.isValid()) {
-        for (const ME0RecHit& rh : seg.specificRecHits()) {
-          ME0DetId rhId   = rh.me0Id();
+            for (const auto& linkSet : *me0DigiSimLinks) {
+              if (linkSet.detId() != rhId.rawId()) continue;
 
-          for (const auto& linkSet : *me0DigiSimLinks) {
-            if (linkSet.detId() != rhId.rawId()) continue;
+              for (const ME0DigiSimLink& lnk : linkSet.data) {
 
-            for (const ME0DigiSimLink& lnk : linkSet.data) {
-
-              unsigned int stId = lnk.getTrackId();
-              if (!simTrackToPdgId.count(stId)) continue;
-              votes[stId]++;
+                unsigned int stId = lnk.getTrackId();
+                if (!simTrackToPdgId.count(stId)) continue;
+                votes[stId]++;
+              }
             }
           }
         }
-      }
 
-      auto [winId, winPdg]        = bestSimMuon(votes);
-      me0Seg_simTrackId_   [_nME0Seg] = winId;
-      me0Seg_simTrack_pdgId_[_nME0Seg] = winPdg;
+        auto [winId, winPdg]        = bestSimMuon(votes);
+        me0Seg_simTrackId_   [_nME0Seg] = winId;
+        me0Seg_simTrack_pdgId_[_nME0Seg] = winPdg;
 
-      if (debug) {
-        std::cout << "ME0 Segment " << _nME0Seg
-                  << ": region=" << mid.region()
-                  << "  station=" << mid.station()
-                  << "  chamber=" << mid.chamber()
-                  << "  gp=(" << gp.x() << "," << gp.y() << "," << gp.z() << ")"
-                  << "  nHits=" << seg.nRecHits()
-                  << "  → SimTrack " << winId
-                  << std::endl;
-      }
+        if (debug) {
+          std::cout << "ME0 Segment " << _nME0Seg
+                    << ": region=" << mid.region()
+                    << "  station=" << mid.station()
+                    << "  chamber=" << mid.chamber()
+                    << "  gp=(" << gp.x() << "," << gp.y() << "," << gp.z() << ")"
+                    << "  nHits=" << seg.nRecHits()
+                    << "  → SimTrack " << winId
+                    << std::endl;
+        }
 
-      ++_nME0Seg;
-      if (_nME0Seg >= MAX_ME0_SEG) {
-        edm::LogWarning("MuonHLTNtupler") << "MAX_ME0_SEG reached, truncating.";
-        break;
+        ++_nME0Seg;
+        if (_nME0Seg >= MAX_ME0_SEG) {
+          edm::LogWarning("MuonHLTNtupler") << "MAX_ME0_SEG reached, truncating.";
+          break;
+        }
       }
     }
+    nME0Segments_ = _nME0Seg;
+    if (debug) std::cout << "ME0 segments stored: " << nME0Segments_ << "\n";
   }
-  nME0Segments_ = _nME0Seg;
-  if (debug) std::cout << "ME0 segments stored: " << nME0Segments_ << "\n";
-
 } // end Fill_Tracks_And_Segments
 
 

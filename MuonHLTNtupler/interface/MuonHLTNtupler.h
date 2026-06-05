@@ -176,11 +176,11 @@ private:
   TTree *ntuple_;
   static const int arrSize_ = 5000;
 
-  static const int MAX_TRACKS       = 500;
+  static const int MAX_TRACKS       = 5000;
   static const int MAX_DT_SEG       = 500;
-  static const int MAX_CSC_SEG      = 500;
-  static const int MAX_GEM_SEG      = 200;
-  static const int MAX_ME0_SEG      = 200;
+  static const int MAX_CSC_SEG      = 1000;
+  static const int MAX_GEM_SEG      = 500;
+  static const int MAX_ME0_SEG      = 500;
 
   int   nTracks_;
   float track_pt_[MAX_TRACKS];
@@ -213,6 +213,7 @@ private:
   int   track_lastTSOS_isValid_[MAX_TRACKS];
   int   track_simTrackId_[MAX_TRACKS];
   int   track_simTrack_pdgId_[MAX_TRACKS];
+  int   track_bestVotes_[MAX_TRACKS];
   float track_simTrack_pt_[MAX_TRACKS]; 
   float track_simTrack_eta_[MAX_TRACKS]; 
   float track_simTrack_phi_[MAX_TRACKS];
