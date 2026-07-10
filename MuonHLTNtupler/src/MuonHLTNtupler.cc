@@ -379,7 +379,7 @@ void MuonHLTNtupler::Make_Branch()
 void MuonHLTNtupler::Fill_Tracks_And_Segments(const edm::Event& iEvent,
                                                const edm::EventSetup& iSetup) {
 
-  bool debug = true;
+  bool debug = false;
   bool run_ME0 = false; // To be understood why the ME0 geometry is not properly retrieved in the EventSetup
 
   if (debug) {
