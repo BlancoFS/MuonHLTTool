@@ -37,8 +37,8 @@ using namespace std;
   // http://igotit.tistory.com/entry/C-함수-인자로-포인터-전달하고-함수내에서-동적-메모리-할당-받기-2가지-방식
   TH1F* Get_Hist(TString FileName, TString HistName, TString HistName_New = "" )
   { 
-    std::cout << FileName << std::endl;
-    std::cout << HistName << std::endl;
+    std::cout << "Get_Hist : FileName : " << FileName << std::endl;
+    std::cout << "Get_Hist : HistName : " << HistName << std::endl;
     TH1::AddDirectory(kFALSE);
 
     TFile *f_input = TFile::Open( FileName );
@@ -207,6 +207,11 @@ using namespace std;
     if( varName.Contains("eta_sim") )          titleX = "#eta(sim)";
     if( varName.Contains("mass_gen") )         titleX = "m_{#mu^{+}#mu^{-}, GEN} [GeV]";
     if( varName.Contains("pt_gen") )           titleX = "p_{T}^{gen} [GeV]";
+    
+    if( varName.Contains("pt_offline") )           titleX = "p_{T}^{offline} [GeV]";
+    if( varName.Contains("eta_offline") )          titleX = "#eta^{offline}";
+    if( varName.Contains("pu_offline") )          titleX = "PU";
+
     if( varName.Contains("eta_gen") )          titleX = "#eta^{gen}";
     if( varName.Contains("phi_gen") )          titleX = "#phi^{gen}";
     if( varName.Contains("Pt") )               titleX = "p_{T} [GeV]";

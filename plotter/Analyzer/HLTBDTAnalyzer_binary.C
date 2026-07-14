@@ -102,6 +102,46 @@ double eta_bins[n_eta_bins] = {
    0.9,  1.2,  1.6,  2.1,  2.4
 };
 
+class ResContainer
+{
+public:
+ResContainer(TString _Tag) {
+    this->Tag = _Tag;
+
+    this->Init();
+}
+
+void Init() {
+    TH1::SetDefaultSumw2(kTRUE);
+    TH2::SetDefaultSumw2(kTRUE);
+    TH1::AddDirectory(kFALSE);
+    TH2::AddDirectory(kFALSE);
+
+    v_res = new TH1D(this->Tag, "", 500, -2.5, 2.5);
+}
+
+void Fill(double hlt_pT, double gen_pT, double weight = 1.0) {
+    v_res->Fill( (hlt_pT - gen_pT) / gen_pT , weight );
+}
+
+void Save( TDirectory *dir )
+{
+  dir->cd();
+
+  v_res->SetDirectory(dir);
+  v_res->Write();
+//   delete v_res[0];
+}
+
+~ResContainer() {
+    delete v_res;
+}
+
+TH1D* v_res;
+TString Tag;
+
+};
+
 class HistContainer
 {
 public:
@@ -278,177 +318,180 @@ void HLTBDTAnalyzer_binary(
     timer_total.Start();
 
     // -- Input
-        vector<TString> paths = vec_Dataset;
+    vector<TString> paths = vec_Dataset;
 
-        TString base_path = "";
+    TString base_path = "";
 
-        if(tag == "TEST") {
-            base_path = "../";
-            paths = { "./ntuple*.root" };
-        }
+    if(tag == "TEST") {
+        base_path = "../";
+        paths = { "./ntuple*.root" };
+    }
 
     // -- Output
-        TString fileName = TString::Format( "hist-%s-%s", ver.Data(), tag.Data() );
-        if(PU_min >= 0.) fileName = fileName + TString::Format("-PU%.0fto%.0f", PU_min, PU_max);
-        if(JobId != "")  fileName = fileName + TString::Format("--%s", JobId.Data());
-        // TString outputDir = TString::Format("../Outputs_%s/", ver.Data());
-        TString outputDir = TString::Format("../Output_Binary/Outputs_%s/", ver.Data());
-        if (gSystem->mkdir(outputDir, kTRUE) != -1) gSystem->mkdir(outputDir,kTRUE);
-        //TFile *f_output = TFile::Open(fileName + "-BDT.root", "RECREATE");
-        TFile *f_output = TFile::Open(outputDir + fileName + "-BDT.root", "RECREATE");
-        
-        std::cout << TString::Format("../Output_Binary/Outputs_%s/", ver.Data()) << std::endl;
-        std::cout << outputDir + fileName + "-BDT.root" << std::endl;
+    TString fileName = TString::Format( "hist-%s-%s", ver.Data(), tag.Data() );
+    if(PU_min >= 0.) fileName = fileName + TString::Format("-PU%.0fto%.0f", PU_min, PU_max);
+    if(JobId != "")  fileName = fileName + TString::Format("--%s", JobId.Data());
+
+    TFile *f_output = TFile::Open("./Phase2_Muon_" + fileName + ".root", "RECREATE");
 
     // -- Event chain
-        TChain *_chain_Ev          = new TChain("ntupler/ntuple");
-        for(size_t f = 0; f<paths.size(); ++f) {
-            _chain_Ev->Add(paths[f]);
-            cout << "Adding path: " << paths[f] << endl;
-        }
-        cout << endl;
+    TChain *_chain_Ev          = new TChain("ntupler/ntuple");
+    for(size_t f = 0; f<paths.size(); ++f) {
+        _chain_Ev->Add(paths[f]);
+        cout << "Adding path: " << paths[f] << endl;
+    }
+    cout << endl;
 
-        unsigned nEvent      = _chain_Ev->GetEntries();
-        if(maxEv >= 0)  nEvent = maxEv;
-        cout << "\t nEvent: " << nEvent << endl;
+    unsigned nEvent      = _chain_Ev->GetEntries();
+    if(maxEv >= 0)  nEvent = maxEv;
+    cout << "\t nEvent: " << nEvent << endl;
 
-        vector<TString> branch_tags = {
-            "genParticle",
-            "vec_my",
-            "L1TkMu",
-            "L2Muon",
-            "hltPhase2L3OI",
-            "hltPhase2L3IOFromL1",
-            "hltPhase2L3MuonsNoID",
-            "hltPhase2L3Muons",
-            "L3Muons", // inner
-            "hltIter0Phase2L3FromL1TkMuon",
-            "hltIter2Phase2L3FromL1TkMuon",
+    vector<TString> branch_tags = {
+        "genParticle",
+        "vec_my",
+        "L1Muon",
+        "L1TkMuon",
+        "L1TkMu",
+        "L2Muon",
+        "hltPhase2L3OI",
+        "hltPhase2L3IOFromL1",
+        "hltPhase2L3MuonsNoID",
+        "hltPhase2L3Muons",
+        "L3Muons", // inner
+        "hltIter0Phase2L3FromL1TkMuon",
+        "hltIter2Phase2L3FromL1TkMuon",
 
-        };
+    };
 
-        unique_ptr<MuonHLTNtuple_binary>  nt( new MuonHLTNtuple_binary( _chain_Ev, branch_tags ) );
+    unique_ptr<MuonHLTNtuple_binary>  nt( new MuonHLTNtuple_binary( _chain_Ev, branch_tags ) );
 
     // -- Histograms
-        TH1D *h_nEvents = new TH1D("h_nEvents",  "", 3, -1, 2);
+    TH1D *h_nEvents = new TH1D("h_nEvents",  "", 3, -1, 2);
 
-        TH1D *h_gen_pt  = new TH1D("h_gen_pt",  "", 1000, 0, 1000);
-        TH1D *h_gen_eta = new TH1D("h_gen_eta", "", 60, -3, 3);
-        TH1D *h_gen_phi = new TH1D("h_gen_phi", "", 64, -3.2, 3.2);
+    TH1D *h_gen_pt  = new TH1D("h_gen_pt",  "", 1000, 0, 1000);
+    TH1D *h_gen_eta = new TH1D("h_gen_eta", "", 60, -3, 3);
+    TH1D *h_gen_phi = new TH1D("h_gen_phi", "", 64, -3.2, 3.2);
 
-        TH1D *h_gen_acc_pt  = new TH1D("h_gen_acc_pt",  "", 1000, 0, 1000);
-        TH1D *h_gen_acc_eta = new TH1D("h_gen_acc_eta", "", 60, -3, 3);
-        TH1D *h_gen_acc_phi = new TH1D("h_gen_acc_phi", "", 64, -3.2, 3.2);
+    TH1D *h_gen_acc_pt  = new TH1D("h_gen_acc_pt",  "", 1000, 0, 1000);
+    TH1D *h_gen_acc_eta = new TH1D("h_gen_acc_eta", "", 60, -3, 3);
+    TH1D *h_gen_acc_phi = new TH1D("h_gen_acc_phi", "", 64, -3.2, 3.2);
 
-        TH1D *h_gen_hard_pt  = new TH1D("h_gen_hard_pt",  "", 1000, 0, 1000);
-        TH1D *h_gen_hard_eta = new TH1D("h_gen_hard_eta", "", 60, -3, 3);
-        TH1D *h_gen_hard_phi = new TH1D("h_gen_hard_phi", "", 64, -3.2, 3.2);
+    TH1D *h_gen_hard_pt  = new TH1D("h_gen_hard_pt",  "", 1000, 0, 1000);
+    TH1D *h_gen_hard_eta = new TH1D("h_gen_hard_eta", "", 60, -3, 3);
+    TH1D *h_gen_hard_phi = new TH1D("h_gen_hard_phi", "", 64, -3.2, 3.2);
 
-        TH1D *h_gen_hard_acc_pt  = new TH1D("h_gen_hard_acc_pt",  "", 1000, 0, 1000);
-        TH1D *h_gen_hard_acc_eta = new TH1D("h_gen_hard_acc_eta", "", 60, -3, 3);
-        TH1D *h_gen_hard_acc_phi = new TH1D("h_gen_hard_acc_phi", "", 64, -3.2, 3.2);
+    TH1D *h_gen_hard_acc_pt  = new TH1D("h_gen_hard_acc_pt",  "", 1000, 0, 1000);
+    TH1D *h_gen_hard_acc_eta = new TH1D("h_gen_hard_acc_eta", "", 60, -3, 3);
+    TH1D *h_gen_hard_acc_phi = new TH1D("h_gen_hard_acc_phi", "", 64, -3.2, 3.2);
 
-        vector<TString> L3types = {
-            "L1Muon",
-            "L2Muon",
-            "L3OI",
-            "L3Iter0FromL1",
-            "L3Iter2FromL1",
-            "L3IOFromL1",
-            "L3MuonNoId",
-            "L3Muon",
-            "L3MuonInner",
-            "hltL1TkSingleMuFiltered22",
-            "hltL3fL1TkSingleMu22L3Filtered50Q",
-            "hltL3fL1TkSingleMu22L3Filtered24Q",
-            "hltL3crIsoL1TkSingleMu22L3f24QL3pfecalIsoFiltered0p41",
-            "hltL3crIsoL1TkSingleMu22L3f24QL3pfhcalIsoFiltered0p40",
-            "hltL3crIsoL1TkSingleMu22L3f24QL3pfhgcalIsoFiltered4p70",
-            "hltL3crIsoL1TkSingleMu22L3f24QL3trkIsoRegionalNewFiltered0p07EcalHcalHgcalTrk"
-        };
+    vector<TString> L3types = {
+        "L1Muon",
+        "L2Muon",
+        "L1TkMuon",
+        "L3OI",
+        "L3Iter0FromL1",
+        "L3Iter2FromL1",
+        
+        "L3IOFromL1",
+        "L3MuonNoId",
+        "L3Muon",
 
-        // -- Efficiency
-            vector<double> Eff_genpt_mins = {
-                0,
-                26,
-                53
-            };
-            vector<double> Eff_L3pt_mins = {
-                0,
-                8,
-                22,
-                24,
-                50
-            };
+        // "L3MuonInner",
+        // "hltL1TkSingleMuFiltered22",
+        // "hltL3fL1TkSingleMu22L3Filtered50Q",
+        // "hltL3fL1TkSingleMu22L3Filtered24Q",
+        // "hltL3crIsoL1TkSingleMu22L3f24QL3pfecalIsoFiltered0p41",
+        // "hltL3crIsoL1TkSingleMu22L3f24QL3pfhcalIsoFiltered0p40",
+        // "hltL3crIsoL1TkSingleMu22L3f24QL3pfhgcalIsoFiltered4p70",
+        // "hltL3crIsoL1TkSingleMu22L3f24QL3trkIsoRegionalNewFiltered0p07EcalHcalHgcalTrk"
+    };
 
-            vector<vector<HistContainer*>> hc_Eff        = {};  // Eff[L3 type][gen pt min]
-            vector<vector<HistContainer*>> hc_Eff_L1Tk   = {};  // Eff[L3 type][gen pt min]
+    // -- Efficiency
+    vector<double> Eff_genpt_mins = {
+        0,
+        26,
+        53
+    };
+    vector<double> Eff_L3pt_mins = {
+        0,
+        8,
+        22,
+        24,
+        50
+    };
 
-            vector<vector<HistContainer*>> hc_EffTO      = {};  // Eff[L3 type][L3 pt min]
-            vector<vector<HistContainer*>> hc_EffTO_L1Tk = {};  // Eff[L3 type][L3 pt min]
+    vector<vector<HistContainer*>> hc_Eff        = {};  // Eff[L3 type][gen pt min]
+    vector<vector<HistContainer*>> hc_Eff_L1Tk   = {};  // Eff[L3 type][gen pt min]
 
-            // std::cout << "Start" << std::endl;
-            int iL3type = 0;
-            for(auto& L3type: L3types) {
-                // std::cout << L3type << std::endl;
-                hc_Eff.push_back( {} );
-                hc_Eff_L1Tk.push_back( {} );
-                hc_EffTO.push_back( {} );
-                hc_EffTO_L1Tk.push_back( {} );
+    vector<vector<HistContainer*>> hc_EffTO      = {};  // Eff[L3 type][L3 pt min]
+    vector<vector<HistContainer*>> hc_EffTO_L1Tk = {};  // Eff[L3 type][L3 pt min]
 
-                for(auto& Eff_genpt_min: Eff_genpt_mins) {
-                    HistContainer* hc_tmp0 = new HistContainer( TString::Format("Eff_%s_genpt%.0f",      L3type.Data(), Eff_genpt_min) );
-                    HistContainer* hc_tmp1 = new HistContainer( TString::Format("Eff_L1Tk_%s_genpt%.0f", L3type.Data(), Eff_genpt_min) );
-                    hc_Eff.at(iL3type).push_back( hc_tmp0 );
-                    hc_Eff_L1Tk.at(iL3type).push_back( hc_tmp1 );
-                }
+    // std::cout << "Start" << std::endl;
+    int iL3type = 0;
+    for(auto& L3type: L3types) {
+        // std::cout << L3type << std::endl;
+        hc_Eff.push_back( {} );
+        hc_Eff_L1Tk.push_back( {} );
+        hc_EffTO.push_back( {} );
+        hc_EffTO_L1Tk.push_back( {} );
 
-                for(auto& Eff_L3pt_min: Eff_L3pt_mins) {
-                    HistContainer* hc_tmp0 = new HistContainer( TString::Format("Eff_%s_L3pt%.0f",      L3type.Data(), Eff_L3pt_min) );
-                    HistContainer* hc_tmp1 = new HistContainer( TString::Format("Eff_L1Tk_%s_L3pt%.0f", L3type.Data(), Eff_L3pt_min) );
-                    hc_EffTO.at(iL3type).push_back( hc_tmp0 );
-                    hc_EffTO_L1Tk.at(iL3type).push_back( hc_tmp1 );
-                }
+        for(auto& Eff_genpt_min: Eff_genpt_mins) {
+            HistContainer* hc_tmp0 = new HistContainer( TString::Format("Eff_%s_genpt%.0f",      L3type.Data(), Eff_genpt_min) );
+            HistContainer* hc_tmp1 = new HistContainer( TString::Format("Eff_L1Tk_%s_genpt%.0f", L3type.Data(), Eff_genpt_min) );
+            hc_Eff.at(iL3type).push_back( hc_tmp0 );
+            hc_Eff_L1Tk.at(iL3type).push_back( hc_tmp1 );
+        }
 
-                iL3type += 1;
-            }
+        for(auto& Eff_L3pt_min: Eff_L3pt_mins) {
+            HistContainer* hc_tmp0 = new HistContainer( TString::Format("Eff_%s_L3pt%.0f",      L3type.Data(), Eff_L3pt_min) );
+            HistContainer* hc_tmp1 = new HistContainer( TString::Format("Eff_L1Tk_%s_L3pt%.0f", L3type.Data(), Eff_L3pt_min) );
+            hc_EffTO.at(iL3type).push_back( hc_tmp0 );
+            hc_EffTO_L1Tk.at(iL3type).push_back( hc_tmp1 );
+        }
 
-        // -- Purity
-            vector<double> Purity_L3pt_mins = {
-                0,
-                8,
-                24
-            };
+        iL3type += 1;
+    }
 
-            vector<HistContainer*> hc_Purity_Sig = {};
-            vector<HistContainer*> hc_Purity_Bkg = {};
-            for(auto& Purity_L3pt_min: Purity_L3pt_mins) {
-                HistContainer* hc_tmp = new HistContainer(
-                    TString::Format("Purity_%s_L3pt%.0f", "Sig", Purity_L3pt_min),
-                    { "pt", "eta", "phi", "pu", "mva" },
-                    {
-                        { 1000, 0, 1000 },
-                        { 48, -2.4, 2.4 },
-                        { 60, -TMath::Pi(), TMath::Pi() },
-                        { 250, 0, 250 },
-                        { 102, -0.01, 1.01 }
-                    }
-                );
-                hc_Purity_Sig.push_back( hc_tmp );
+    // -- Purity
+    vector<double> Purity_L3pt_mins = {
+        0,
+        26,
+        53
+    };
 
-                HistContainer* hc_tmp2 = new HistContainer(
-                    TString::Format("Purity_%s_L3pt%.0f", "Bkg", Purity_L3pt_min),
-                    { "pt", "eta", "phi", "pu", "mva" },
-                    {
-                        { 1000, 0, 1000 },
-                        { 48, -2.4, 2.4 },
-                        { 60, -TMath::Pi(), TMath::Pi() },
-                        { 250, 0, 250 },
-                        { 102, -0.01, 1.01 }
-                    }
-                );
-                hc_Purity_Bkg.push_back( hc_tmp2 );
-            }
+    vector<vector<HistContainer*>> hc_Purity_Sig           = {};
+    vector<vector<HistContainer*>> hc_Purity_Sig_L1Tk      = {};
+    vector<vector<HistContainer*>> hc_Purity_Sig_L3pT      = {};
+    vector<vector<HistContainer*>> hc_Purity_Sig_L1Tk_L3pT = {};
+    vector<vector<ResContainer*>> hc_Res                  = {};
+
+
+    iL3type = 0;
+    for(auto& L3type: L3types) {
+        // std::cout << L3type << std::endl;
+        hc_Purity_Sig.push_back( {} );
+        hc_Purity_Sig_L1Tk.push_back( {} );
+        hc_Purity_Sig_L3pT.push_back( {} );
+        hc_Purity_Sig_L1Tk_L3pT.push_back( {} );
+        hc_Res.push_back( {} );
+
+        for(auto& Purity_L3pt_min: Purity_L3pt_mins) {
+            HistContainer* hc_tmp0 = new HistContainer( TString::Format("Purity_sig_%s_genpt%.0f", L3type.Data(), Purity_L3pt_min) );
+            HistContainer* hc_tmp1 = new HistContainer( TString::Format("Purity_L1Tk_sig_%s_genpt%.0f", L3type.Data(), Purity_L3pt_min) );
+            HistContainer* hc_tmp2 = new HistContainer( TString::Format("Purity_sig_%s_L3pt%.0f", L3type.Data(), Purity_L3pt_min) );
+            HistContainer* hc_tmp3 = new HistContainer( TString::Format("Purity_L1Tk_sig_%s_L3pt%.0f", L3type.Data(), Purity_L3pt_min) );
+
+            ResContainer* hc_tmp4 = new ResContainer( TString::Format("Res_%s_genpt%.0f", L3type.Data(), Purity_L3pt_min) );
+            
+            hc_Purity_Sig.at(iL3type).push_back( hc_tmp0 );
+            hc_Purity_Sig_L1Tk.at(iL3type).push_back( hc_tmp1 );
+            hc_Purity_Sig_L3pT.at(iL3type).push_back( hc_tmp2 );
+            hc_Purity_Sig_L1Tk_L3pT.at(iL3type).push_back( hc_tmp3 );
+            hc_Res.at(iL3type).push_back( hc_tmp4 );
+        }
+
+        iL3type += 1;
+    }
 
 
     std::cout << "Evt loop start" << std::endl;
@@ -559,20 +602,21 @@ void HLTBDTAnalyzer_binary(
         vector<vector<Object>*> L3MuonColls {
             &theL1Muons_pt22,
             &L2Muons,
+            &L1TkMuons,
             &hltPhase2L3OI,
             &hltIter0Phase2L3FromL1TkMuon,
             &hltIter2Phase2L3FromL1TkMuon,
             &hltPhase2L3IOFromL1,
             &hltPhase2L3MuonsNoID,
             &hltPhase2L3Muons,
-            &L3Muons,
-            &hltL1TkSingleMuFiltered22,
-            &hltL3fL1TkSingleMu22L3Filtered50Q,
-            &hltL3fL1TkSingleMu22L3Filtered24Q,
-            &hltL3crIsoL1TkSingleMu22L3f24QL3pfecalIsoFiltered0p41,
-            &hltL3crIsoL1TkSingleMu22L3f24QL3pfhcalIsoFiltered0p40,
-            &hltL3crIsoL1TkSingleMu22L3f24QL3pfhgcalIsoFiltered4p70,
-            &hltL3crIsoL1TkSingleMu22L3f24QL3trkIsoRegionalNewFiltered0p07EcalHcalHgcalTrk
+            // &L3Muons,
+            // &hltL1TkSingleMuFiltered22,
+            // &hltL3fL1TkSingleMu22L3Filtered50Q,
+            // &hltL3fL1TkSingleMu22L3Filtered24Q,
+            // &hltL3crIsoL1TkSingleMu22L3f24QL3pfecalIsoFiltered0p41,
+            // &hltL3crIsoL1TkSingleMu22L3f24QL3pfhcalIsoFiltered0p40,
+            // &hltL3crIsoL1TkSingleMu22L3f24QL3pfhgcalIsoFiltered4p70,
+            // &hltL3crIsoL1TkSingleMu22L3f24QL3trkIsoRegionalNewFiltered0p07EcalHcalHgcalTrk
         };
 
         // // DEBUG >> Print out objects per evt loop //
@@ -638,14 +682,13 @@ void HLTBDTAnalyzer_binary(
                     for(unsigned j=0; j<Eff_genpt_mins.size(); ++j) {
                         if( genmu.pt > Eff_genpt_mins.at(j) ) {
                             hc_Eff.at(i).at(j)->fill_den( genmu, nt->truePU, genWeight );
+                            if( matched_idx > -1 )
+                                hc_Eff.at(i).at(j)->fill_num( genmu, nt->truePU, genWeight );
 
                             if( matched_L1Muon ) {
                                 hc_Eff_L1Tk.at(i).at(j)->fill_den( genmu, nt->truePU, genWeight );
-
-                                if( matched_idx > -1 ) {
-                                    hc_Eff.at(i).at(j)->fill_num( genmu, nt->truePU, genWeight );
+                                if( matched_idx > -1 )
                                     hc_Eff_L1Tk.at(i).at(j)->fill_num( genmu, nt->truePU, genWeight );
-                                }
                             }
                         }
                     }
@@ -653,16 +696,128 @@ void HLTBDTAnalyzer_binary(
                     // --  Efficiency turn-on / Gen or L1Tk
                     for(unsigned j=0; j<Eff_L3pt_mins.size(); ++j) {
                         hc_EffTO.at(i).at(j)->fill_den( genmu, nt->truePU, genWeight );
+                        if( matched_idx > -1 && L3Coll->at(matched_idx).pt > Eff_L3pt_mins.at(j) )
+                            hc_EffTO.at(i).at(j)->fill_num( genmu, nt->truePU, genWeight );
 
                         if( matched_L1Muon ) {
                             hc_EffTO_L1Tk.at(i).at(j)->fill_den( genmu, nt->truePU, genWeight );
-
-                            if( matched_idx > -1 && L3Coll->at(matched_idx).pt > Eff_L3pt_mins.at(j) ) {
-                                hc_EffTO.at(i).at(j)->fill_num( genmu, nt->truePU, genWeight );
+                            if( matched_idx > -1 && L3Coll->at(matched_idx).pt > Eff_L3pt_mins.at(j) )
                                 hc_EffTO_L1Tk.at(i).at(j)->fill_num( genmu, nt->truePU, genWeight );
-                            }
                         }
                     }
+                }
+            }
+        }
+
+        for(unsigned i=0; i<L3types.size(); ++i) {
+            vector<Object>* L3Coll = L3MuonColls.at(i);
+
+            bool looseMatch = (L3types.at(i).Contains("L1Muon") ||
+                               L3types.at(i).Contains("L1TkMuon") ||
+                               L3types.at(i).Contains("L2Muon") ||
+                               L3types.at(i).Contains("hltL1TkSingleMuFiltered22") ||
+                               L3types.at(i).Contains("hltL1TkDoubleMuFiltered7") );
+
+            // bool matched( const Object& other, double dR_match = 0.1, double dpt_match = 1.e9 ) {
+            //   double dR  = deltaR( other );
+            //   double dpt = fabs( this->pt - other.pt ) / this->pt;
+            //   return ( (dR < dR_match) && (dpt < dpt_match) );
+            // }
+
+            // hc_Purity_Sig.push_back( {} ); i,j: i - L3 type, j - minpT
+            // hc_Purity_Sig_L1Tk.push_back( {} );
+            // hc_Purity_Bkg.push_back( {} );
+            // hc_Purity_Bkg_L1Tk.push_back( {} );
+
+            for(auto& mu: *L3Coll) {
+
+                bool matched_L1Muon = false;
+                matched_L1Muon = mu.matched( theL1Muons_pt22, 0.3 );
+
+                for(unsigned j=0; j<Purity_L3pt_mins.size(); ++j) {
+                    hc_Purity_Sig.at(i).at(j)->fill_den( mu, nt->truePU, genWeight );
+                    if (mu.pt > Purity_L3pt_mins.at(j))
+                        hc_Purity_Sig_L3pT.at(i).at(j)->fill_den( mu, nt->truePU, genWeight );
+
+                    if( matched_L1Muon ) {
+                        hc_Purity_Sig_L1Tk.at(i).at(j)->fill_den( mu, nt->truePU, genWeight );
+                        if (mu.pt > Purity_L3pt_mins.at(j))
+                            hc_Purity_Sig_L1Tk_L3pT.at(i).at(j)->fill_den( mu, nt->truePU, genWeight );
+                    }
+                }
+
+                for(auto& genmu: GenParticles) {
+
+                    if( fabs(genmu.get("ID")) != 13 )
+                        continue;
+
+                    if( !acceptance( genmu ) )
+                        continue;
+
+                    if( genmu.get("status") != 1 )
+                        continue;
+
+                    bool fromHardProcess = genmu.matched( GenMuonsFromHardProcess, 0.001 );
+                    if( doDimuon && !fromHardProcess )
+                        continue;
+
+                    bool matched_idx_res = false;
+                    matched_idx_res = looseMatch ? mu.matched( genmu, 0.3 ) : mu.matched( genmu, 0.3);
+                    
+                    for(unsigned j=0; j<Purity_L3pt_mins.size(); ++j)
+                        if (matched_idx_res && mu.pt > Purity_L3pt_mins.at(j))
+                            hc_Res.at(i).at(j)->Fill( mu.pt, genmu.pt, genWeight );
+                    
+                    if (matched_idx_res)
+                        break;
+                }
+
+
+                for(auto& genmu: GenParticles) {
+
+                    if( fabs(genmu.get("ID")) != 13 )
+                        continue;
+
+                    if( !acceptance( genmu ) )
+                        continue;
+
+                    if( genmu.get("status") != 1 )
+                        continue;
+
+                    bool fromHardProcess = genmu.matched( GenMuonsFromHardProcess, 0.001 );
+                    if( doDimuon && !fromHardProcess )
+                        continue;
+
+                    bool matched_bool = false;
+                    matched_bool = looseMatch ? mu.matched( genmu, 0.3 ) : mu.matched( genmu, 0.1, 0.3 );
+
+                    if (!matched_bool) 
+                        continue;
+
+                    bool gen_matched_L1 = false;
+                    gen_matched_L1 = genmu.matched( theL1Muons_pt22, 0.3 );
+
+                    for(unsigned j=0; j<Purity_L3pt_mins.size(); ++j) {
+
+                        if (matched_bool) { 
+                            hc_Purity_Sig.at(i).at(j)->fill_num( mu, nt->truePU, genWeight );
+                            if (mu.pt > Purity_L3pt_mins.at(j)) {
+                                hc_Purity_Sig_L3pT.at(i).at(j)->fill_num( mu, nt->truePU, genWeight );
+                            }
+                            
+                            if( gen_matched_L1 ) {
+                                hc_Purity_Sig_L1Tk.at(i).at(j)->fill_num( mu, nt->truePU, genWeight );
+                                if (mu.pt > Purity_L3pt_mins.at(j)) {
+                                    hc_Purity_Sig_L1Tk_L3pT.at(i).at(j)->fill_num( mu, nt->truePU, genWeight );
+                                }
+                            }
+
+                        }
+
+                    }
+
+                    if (matched_bool)
+                        break;
                 }
             }
         }
@@ -695,57 +850,73 @@ void HLTBDTAnalyzer_binary(
     }
 
     // -- Save output and Clear memory
-        // delete _chain_Ev;
+    // delete _chain_Ev;
 
-        f_output->cd();
+    f_output->cd();
 
-        h_nEvents->Write();
+    h_nEvents->Write();
 
-        h_gen_pt->Write();
-        h_gen_eta->Write();
-        h_gen_phi->Write();
+    h_gen_pt->Write();
+    h_gen_eta->Write();
+    h_gen_phi->Write();
 
-        h_gen_acc_pt->Write();
-        h_gen_acc_eta->Write();
-        h_gen_acc_phi->Write();
+    h_gen_acc_pt->Write();
+    h_gen_acc_eta->Write();
+    h_gen_acc_phi->Write();
 
-        h_gen_hard_pt->Write();
-        h_gen_hard_eta->Write();
-        h_gen_hard_phi->Write();
+    h_gen_hard_pt->Write();
+    h_gen_hard_eta->Write();
+    h_gen_hard_phi->Write();
 
-        h_gen_hard_acc_pt->Write();
-        h_gen_hard_acc_eta->Write();
-        h_gen_hard_acc_phi->Write();
+    h_gen_hard_acc_pt->Write();
+    h_gen_hard_acc_eta->Write();
+    h_gen_hard_acc_phi->Write();
 
-        TDirectory* dir0 = f_output->mkdir("Eff");
-        dir0->cd();
+    TDirectory* dir0 = f_output->mkdir("Eff");
+    TDirectory* dir1 = f_output->mkdir("Pur");
+    TDirectory* dir2 = f_output->mkdir("Res");
+    dir0->cd();
 
-        for(unsigned i=0; i<L3types.size(); ++i) {
-            for(unsigned j=0; j<Eff_genpt_mins.size(); ++j) {
-                hc_Eff.at(i).at(j)->Save( dir0 );
-                hc_Eff_L1Tk.at(i).at(j)->Save( dir0 );
-                delete hc_Eff.at(i).at(j);
-                delete hc_Eff_L1Tk.at(i).at(j);
-            }
-
-            for(unsigned j=0; j<Eff_L3pt_mins.size(); ++j) {
-                hc_EffTO.at(i).at(j)->Save( dir0 );
-                hc_EffTO_L1Tk.at(i).at(j)->Save( dir0 );
-                delete hc_EffTO.at(i).at(j);
-                delete hc_EffTO_L1Tk.at(i).at(j);
-            }
+    for(unsigned i=0; i<L3types.size(); ++i) {
+        for(unsigned j=0; j<Eff_genpt_mins.size(); ++j) {
+            hc_Eff.at(i).at(j)->Save( dir0 );
+            hc_Eff_L1Tk.at(i).at(j)->Save( dir0 );
+            delete hc_Eff.at(i).at(j);
+            delete hc_Eff_L1Tk.at(i).at(j);
         }
 
-        f_output->cd();
+        for(unsigned j=0; j<Eff_L3pt_mins.size(); ++j) {
+            hc_EffTO.at(i).at(j)->Save( dir0 );
+            hc_EffTO_L1Tk.at(i).at(j)->Save( dir0 );
+            delete hc_EffTO.at(i).at(j);
+            delete hc_EffTO_L1Tk.at(i).at(j);
+        }
+    }
 
+    dir1->cd();
+    for(unsigned i=0; i<L3types.size(); ++i) {
         for(unsigned j=0; j<Purity_L3pt_mins.size(); ++j) {
-            hc_Purity_Sig.at(j)->Save(f_output);
-            hc_Purity_Bkg.at(j)->Save(f_output);
-            delete hc_Purity_Sig.at(j);
-            delete hc_Purity_Bkg.at(j);
+            hc_Purity_Sig.at(i).at(j)->Save(dir1);
+            hc_Purity_Sig_L1Tk.at(i).at(j)->Save(dir1);
+            hc_Purity_Sig_L3pT.at(i).at(j)->Save(dir1);
+            hc_Purity_Sig_L1Tk_L3pT.at(i).at(j)->Save(dir1);
+            delete hc_Purity_Sig.at(i).at(j);
+            delete hc_Purity_Sig_L1Tk.at(i).at(j);
+            delete hc_Purity_Sig_L3pT.at(i).at(j);
+            delete hc_Purity_Sig_L1Tk_L3pT.at(i).at(j);
         }
+    }
 
-        f_output->Close();
+    dir2->cd();
+    for (unsigned i=0; i<L3types.size(); ++i) {
+        for (unsigned j=0; j<Purity_L3pt_mins.size(); ++j) {
+            hc_Res.at(i).at(j)->Save(dir2);
+            delete hc_Res.at(i).at(j);
+        }
+    }
+
+
+    f_output->Close();
 
     delete f_output;
 

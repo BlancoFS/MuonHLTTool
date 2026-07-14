@@ -124,13 +124,13 @@ double eta_bins_more[21] = {
 };
 
 
-// echo 'gROOT->LoadMacro("drawBDTEff_binary.C+"); gSystem->Exit(0);' | root -b -l
-// rootbq 'drawBDTEff_binary.C("v30", "DY PU200", "PU200-DYToLL_M50", "L1Tk")'
-// rootbq 'drawBDTEff_binary.C("v30", "DY PU200", "PU200-DYToLL_M50", "")'
+// echo 'gROOT->LoadMacro("drawBDTEffFull_binary.C+"); gSystem->Exit(0);' | root -b -l
+// rootbq 'drawBDTEffFull_binary.C("v30", "DY PU200", "PU200-DYToLL_M50", "L1Tk")'
+// rootbq 'drawBDTEffFull_binary.C("v30", "DY PU200", "PU200-DYToLL_M50", "")'
 
-void drawBDTEff_binary(
-  TString ver = "v00", TString SAMPLE = "DY PU200", TString tag = "PU200-DYToLL_M50",
-  TString eff_tag = "L3IOFromL1", bool isLogy = false  // HERE
+void drawBDTEffFull_binary_origin(
+  TString ver = "v30", TString SAMPLE = "DY PU200", TString tag = "PU200-DYToLL_M50",
+  TString eff_tag = "L3Iter2FromL1", bool isLogy = false  // HERE
 ) {
   TStopwatch timer_total;
   timer_total.Start();
@@ -138,7 +138,7 @@ void drawBDTEff_binary(
   gStyle->SetPalette(kRainBow);
   TH1::SetDefaultSumw2(kTRUE);
 
-  TString Dir = "../plot_Binary/plots_"+ver+"/plots_BDTEff_"+ver+"/"+tag+"/";
+  TString Dir = "./plot_newBaseline/plots_"+ver+"/plots_BDTEffFull_"+ver+"/"+tag+"/";
   if (gSystem->mkdir(Dir,kTRUE) != -1)
     gSystem->mkdir(Dir,kTRUE);
 
@@ -148,34 +148,21 @@ void drawBDTEff_binary(
 
   vector<Color_t> v_color = {
     kBlack,
-    static_cast<short>(TColor::GetColor("#5790fc")),
-    static_cast<short>(TColor::GetColor("#f89c20")),
-    static_cast<short>(TColor::GetColor("#e42536")),
-    static_cast<short>(TColor::GetColor("#964a8b")),
-    static_cast<short>(TColor::GetColor("#9c9ca1")),
-    static_cast<short>(TColor::GetColor("#7a21dd")),
-
+    kRed,
+    kBlue,
     kMagenta,
 
     kGreen+2,
-    kYellow+2,
+    kYellow
   };
 
   vector<int> v_marker = {
     20,
-    21,
+    20,
     22,
-    20,
-    21,
-    22,
-    20,
-    21,
-    22,
-    20,
-    20,
-    20,
-    20,
-    22
+    23,
+    24,
+    25
   };
 
   vector<TString> v_var = {"pt", "eta", "pu"};
@@ -190,85 +177,44 @@ void drawBDTEff_binary(
     range.at(2).at(2) = 141;
   }
 
-  vector<TString> types_file = {
-    "../Analyzer/OI_default.root",
-    "../Analyzer/OI_default.root",
-    "../Analyzer/OI_default.root",
-    // "../Analyzer/OI_default.root",
-    // "../Analyzer/OI_FromL1.root",
-    // "../Analyzer/OI_FromL1Tk.root",
-  };
-
   vector<TString> types = {
-    "Eff/num_Eff_L1Muon_genpt26",
-    "Eff/num_Eff_L1TkMuon_genpt26",
-    "Eff/num_Eff_L2Muon_genpt26",
-    
-    // "Eff/num_Eff_L3OI_genpt26",
-    // "Eff/num_Eff_L3OI_genpt26",
-    // "Eff/num_Eff_L3OI_genpt26",
-
-    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
-
-
+    "Eff/num_Eff_"+eff_tag+"_genpt26",
+    "Eff/num_Eff_"+eff_tag+"_genpt26",
   };
 
   vector<TString> types_den = {
-    "Eff/den_Eff_L1Muon_genpt26",
-    "Eff/den_Eff_L1TkMuon_genpt26",
-    "Eff/den_Eff_L2Muon_genpt26",
-    
-    // "Eff/den_Eff_L3OI_genpt26",
-    // "Eff/den_Eff_L3OI_genpt26",
-    // "Eff/den_Eff_L3OI_genpt26",
+    "Eff/den_Eff_"+eff_tag+"_genpt26",
+    "Eff/den_Eff_"+eff_tag+"_genpt26",
+  };
 
-    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
+  vector<TString> types_file = {
+    "../Analyzer/CMSSW1600pre3_default.root",
+    "../Analyzer/CMSSW1600pre3_newBase.root"
   };
 
   vector<TString> types_str = {
-    "L1 Muon",
-    "L1 TkMuon",
-    "L2 Muon (From L1 TkMuon)",
-
-    // "OI FromL2 (default)",
-    // "OI FromL1",
-    // "OI FromL1Tk",
-
-    // "Unlimited",
-    // "Maximum # of seeds = 100",
-    // "Maximum # of seeds = 50",
-    // "Maximum # of seeds = 10",
-    // "Maximum # of seeds = 0",
+    "default",
+    "new tracking baseline",
   };
 
   for(int ivar=0; ivar<(int)v_var.size(); ++ivar) {
 
     double xmin = range.at(ivar).at(1);
     double xmax = range.at(ivar).at(2);
-    double ymin = 0.8;
-    double ymax = 1.1;
+    double ymin = 0.0;
+    double ymax = 1.5;
 
-    // if(!v_var.at(ivar).Contains("pt")) {
-    //   ymin = 0.8;
-    //   ymax = 1.15;
-    // }
+    if(!v_var.at(ivar).Contains("pt")) {
+      ymin = 0.8;
+      ymax = 1.15;
+    }
 
-    // if(eff_tag=="L3Iter0FromL1" && !v_var.at(ivar).Contains("pt")) {
-    //   ymin = 0.4;
-    //   ymax = 1.15;
-    // }
+    if(eff_tag=="L3Iter2FromL1") {
+      ymin = 0.0;
+      ymax = 0.8;
+    }
 
-    // if(eff_tag=="L3Iter2FromL1") {
-    //   ymin = 0.0;
-    //   ymax = 0.8;
-    // }
-
-
-    TString canvasName = TString::Format("Eff_%s_%s_%s", tag.Data(), eff_tag.Data(), v_var.at(ivar).Data() );
+    TString canvasName = TString::Format("EffFull_%s_%s_%s", tag.Data(), eff_tag.Data(), v_var.at(ivar).Data() );
     canvasName.ReplaceAll(".","p").ReplaceAll("-","_");
     TCanvas *c;
     SetCanvas_Square( c, canvasName, kFALSE, kFALSE, 900, 900 );
@@ -280,37 +226,29 @@ void drawBDTEff_binary(
     SetLegend( legend, 0.15, 0.70, 0.90, 0.87, -1);
 
     bool isFirst = true;
-    for(int i = 0; i<(int)types_file.size(); ++i) {
+    for(int i = 0; i<(int)types.size(); ++i) {
     // for(int i = (int)types.size()-1; i>-1; --i) {
+
+      std::cout << i << " th type out of " << types.size() << std::endl;
 
       TString the_type_num = types.at(i);
       TString the_type_den = types_den.at(i);
       TString the_type_str = types_str.at(i);
       TString fileName = types_file.at(i);
 
-      std::cout << the_type_num << std::endl;
-      std::cout << the_type_den << std::endl;
-      std::cout << the_type_str << std::endl;
-      std::cout << fileName << std::endl;
-
-
       TString titleX = GetTitleX(v_var.at(ivar)+"_gen");
-      TString titleY = "L3 reconstruction eff";
+      TString titleY = "L3 reconstruction efficiency";
 
       TString den_name = TString::Format("%s_%s", the_type_den.Data(), v_var.at(ivar).Data() );
       TString num_name = TString::Format("%s_%s", the_type_num.Data(), v_var.at(ivar).Data() );
 
-      // if(v_var.at(ivar) == "pt") {
-      //   den_name = den_name.ReplaceAll("genpt26", "L3pt24");
-      //   num_name = num_name.ReplaceAll("genpt26", "L3pt24");
-      // }
+      if(v_var.at(ivar) == "pt") {
+        den_name = den_name.ReplaceAll("genpt26", "L3pt24");
+        num_name = num_name.ReplaceAll("genpt26", "L3pt24");
+      }
 
-      //std::cout << "Filename : " << fileName << " , den_name : " << den_name << std::endl;
       TH1F* den = Get_Hist( fileName, den_name );
-      //std::cout << "Den filled" << std::endl;
-      //std::cout << "Filename : " << fileName << " , num_name : " << num_name << std::endl;
       TH1F* num = Get_Hist( fileName, num_name );
-      //std::cout << "Num filled" << std::endl;
 
       if(v_var.at(ivar) == "pt") {
         den = (TH1F*)den->Rebin(n_pt_bins, den_name+"_rb", pt_bins);
@@ -336,8 +274,8 @@ void drawBDTEff_binary(
         if(g->GetPointY(ip) == 0.)  g->SetPointEYhigh(ip, 0.0);
       }
 
-      double markersize = 1.0;
-      // if(markersize < 1.0)
+      double markersize = 2.0 - 0.5*i;
+      if(markersize < 1.0)
         markersize = 1.0;
 
       g->SetTitle("");
@@ -349,6 +287,11 @@ void drawBDTEff_binary(
 
       g->GetXaxis()->SetLimits( xmin, xmax );
       g->GetXaxis()->SetRangeUser( xmin, xmax );
+      if (eff_tag == "L3OI") {
+        ymin = 0;
+        ymax = 0.4;
+      
+      }
       g->GetYaxis()->SetRangeUser( ymin, ymax );
 
       SetAxis_SinglePad( g->GetXaxis(), g->GetYaxis(), titleX, titleY );
@@ -381,7 +324,7 @@ void drawBDTEff_binary(
     c->Modified();  c->Update();  c->RedrawAxis();
     gROOT->ProcessLine( "gErrorIgnoreLevel = 2001;");
     c->SaveAs(Dir+canvasName+logy_tag+".pdf","pdf");
-    // c->SaveAs(Dir+canvasName+logy_tag+".png","png");
+    c->SaveAs(Dir+canvasName+logy_tag+".png","png");
     gROOT->ProcessLine( "gErrorIgnoreLevel = kPrint;");
 
     c->Close();

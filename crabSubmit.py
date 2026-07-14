@@ -5,7 +5,7 @@ import datetime
 now = datetime.datetime.now()
 date = now.strftime('%Y%m%d')
 
-submitVersion = 'MuonHLTPhase2_cmssw1500pre3'
+submitVersion = 'MuonHLTPhase2_cmssw1600pre3'
 mainOutputDir = '/store/group/phys_muon/ec/HLT/%s/%s' % (submitVersion, date)
 #mainOutputDir = '/store/user/%s/%s/%s' % (getUsername(), submitVersion, date)
 
@@ -48,11 +48,14 @@ config.Site.storageSite = 'T2_CH_CERN'
     ]
 
     HLT_menus = [
-        "hlt_muon_mc_rerun_1500pre3_ticl_v5.py",        
-        "hlt_muon_mc_rerun_1500pre3_default.py",
+        "hlt_muon_mc.py",   
+        "hlt_muon_mc_newTRKbaseline.py",   
+        # "hlt_muon_mc_OIFirst_OIFromL1_dump.py",
+        # "hlt_muon_mc_rerun_1500pre3_default.py",
         # "hlt_muon_mc_NoDupl_ALPAKA_Iter0.py",
         # "hlt_muon_mc_NoDupl_Iter02.py",
         # "hlt_muon_mc_NoDupl_Iter0.py"
+        
     ]
 
     # proxy = '"/tmp/x509up_u95096"'

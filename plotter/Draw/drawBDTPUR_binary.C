@@ -128,7 +128,7 @@ double eta_bins_more[21] = {
 // rootbq 'drawBDTEff_binary.C("v30", "DY PU200", "PU200-DYToLL_M50", "L1Tk")'
 // rootbq 'drawBDTEff_binary.C("v30", "DY PU200", "PU200-DYToLL_M50", "")'
 
-void drawBDTEff_binary(
+void drawBDTPUR_binary(
   TString ver = "v00", TString SAMPLE = "DY PU200", TString tag = "PU200-DYToLL_M50",
   TString eff_tag = "L3IOFromL1", bool isLogy = false  // HERE
 ) {
@@ -143,7 +143,7 @@ void drawBDTEff_binary(
     gSystem->mkdir(Dir,kTRUE);
 
 
-  TString L3_pt_min_str = "p_{T}^{HLT} > 24 GeV";
+  TString L3_pt_min_str = "p_{T}^{HLT} > 26 GeV";
   TString gen_pt_min_str = "p_{T}^{gen} > 26 GeV";
 
   vector<Color_t> v_color = {
@@ -194,39 +194,53 @@ void drawBDTEff_binary(
     "../Analyzer/OI_default.root",
     "../Analyzer/OI_default.root",
     "../Analyzer/OI_default.root",
+
     // "../Analyzer/OI_default.root",
     // "../Analyzer/OI_FromL1.root",
     // "../Analyzer/OI_FromL1Tk.root",
   };
 
   vector<TString> types = {
-    "Eff/num_Eff_L1Muon_genpt26",
-    "Eff/num_Eff_L1TkMuon_genpt26",
-    "Eff/num_Eff_L2Muon_genpt26",
-    
-    // "Eff/num_Eff_L3OI_genpt26",
-    // "Eff/num_Eff_L3OI_genpt26",
-    // "Eff/num_Eff_L3OI_genpt26",
+    "Pur/num_Purity_sig_L1Muon_L3pt26",
+    "Pur/num_Purity_sig_L1TkMuon_L3pt26",
+    "Pur/num_Purity_sig_L2Muon_L3pt26",
 
-    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
+    // "Pur/num_Purity_sig_L3OI_L3pt26",
+    // "Pur/num_Purity_sig_L3OI_L3pt26",
+    // "Pur/num_Purity_sig_L3OI_L3pt26",
 
+    // "Pur/num_Purity_L1Tk_sig_L3OI_L3pt26",
+    // "Pur/num_Purity_L1Tk_sig_L3OI_L3pt26",
+    // "Pur/num_Purity_L1Tk_sig_L3OI_L3pt26",
 
+    // "Eff/num_Eff_L1Muon_L3pt26",
+    // "Eff/num_Eff_L1TkMuon_L3pt26",
+    // "Eff/num_Eff_L2Muon_L3pt26",
+    // "Eff/num_Eff_L3OI_L3pt26",
+    // "Eff/num_Eff_L3OI_L3pt26",
+    // "Eff/num_Eff_L3OI_L3pt26",
   };
 
   vector<TString> types_den = {
-    "Eff/den_Eff_L1Muon_genpt26",
-    "Eff/den_Eff_L1TkMuon_genpt26",
-    "Eff/den_Eff_L2Muon_genpt26",
-    
-    // "Eff/den_Eff_L3OI_genpt26",
-    // "Eff/den_Eff_L3OI_genpt26",
-    // "Eff/den_Eff_L3OI_genpt26",
 
-    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
+    "Pur/den_Purity_sig_L1Muon_L3pt26",
+    "Pur/den_Purity_sig_L1TkMuon_L3pt26",
+    "Pur/den_Purity_sig_L2Muon_L3pt26",
+
+    // "Pur/den_Purity_sig_L3OI_L3pt26",
+    // "Pur/den_Purity_sig_L3OI_L3pt26",
+    // "Pur/den_Purity_sig_L3OI_L3pt26",
+    
+    // "Pur/den_Purity_L1Tk_sig_L3OI_L3pt26",
+    // "Pur/den_Purity_L1Tk_sig_L3OI_L3pt26",
+    // "Pur/den_Purity_L1Tk_sig_L3OI_L3pt26",
+
+    // "Eff/den_Eff_L1Muon_L3pt26",
+    // "Eff/den_Eff_L1TkMuon_L3pt26",
+    // "Eff/den_Eff_L2Muon_L3pt26",
+    // "Eff/den_Eff_L3OI_L3pt26",
+    // "Eff/den_Eff_L3OI_L3pt26",
+    // "Eff/den_Eff_L3OI_L3pt26",
   };
 
   vector<TString> types_str = {
@@ -249,8 +263,8 @@ void drawBDTEff_binary(
 
     double xmin = range.at(ivar).at(1);
     double xmax = range.at(ivar).at(2);
-    double ymin = 0.8;
-    double ymax = 1.1;
+    double ymin = 0.7;
+    double ymax = 1.15;
 
     // if(!v_var.at(ivar).Contains("pt")) {
     //   ymin = 0.8;
@@ -294,8 +308,8 @@ void drawBDTEff_binary(
       std::cout << fileName << std::endl;
 
 
-      TString titleX = GetTitleX(v_var.at(ivar)+"_gen");
-      TString titleY = "L3 reconstruction eff";
+      TString titleX = GetTitleX(v_var.at(ivar)+"_offline");
+      TString titleY = "L3 reconstruction purity";
 
       TString den_name = TString::Format("%s_%s", the_type_den.Data(), v_var.at(ivar).Data() );
       TString num_name = TString::Format("%s_%s", the_type_num.Data(), v_var.at(ivar).Data() );
@@ -375,7 +389,7 @@ void drawBDTEff_binary(
     Latex_Simulation_14TeV( latex );
     latex.DrawLatexNDC( 0.45,0.96, "#scale[0.8]{#font[42]{"+SAMPLE+"}}");
     if(v_var.at(ivar) != "pt" )
-      latex.DrawLatexNDC(0.16, 0.89, "#font[42]{#scale[0.8]{"+gen_pt_min_str+"}}");
+      latex.DrawLatexNDC(0.16, 0.89, "#font[42]{#scale[0.8]{"+L3_pt_min_str+"}}");
 
     TString logy_tag = isLogy ? "_log" : "";
     c->Modified();  c->Update();  c->RedrawAxis();

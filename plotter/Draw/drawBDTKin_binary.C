@@ -128,7 +128,7 @@ double eta_bins_more[21] = {
 // rootbq 'drawBDTEff_binary.C("v30", "DY PU200", "PU200-DYToLL_M50", "L1Tk")'
 // rootbq 'drawBDTEff_binary.C("v30", "DY PU200", "PU200-DYToLL_M50", "")'
 
-void drawBDTEff_binary(
+void drawBDTKin_binary(
   TString ver = "v00", TString SAMPLE = "DY PU200", TString tag = "PU200-DYToLL_M50",
   TString eff_tag = "L3IOFromL1", bool isLogy = false  // HERE
 ) {
@@ -180,7 +180,7 @@ void drawBDTEff_binary(
 
   vector<TString> v_var = {"pt", "eta", "pu"};
   vector< vector<double> > range = {
-    {1, 10, 200},  // pt
+    {1, 10, 150},  // pt
     {1, -2.4, 2.4},  // eta
     {1, 200, 201}  // PU
   };
@@ -191,52 +191,52 @@ void drawBDTEff_binary(
   }
 
   vector<TString> types_file = {
-    "../Analyzer/OI_default.root",
-    "../Analyzer/OI_default.root",
-    "../Analyzer/OI_default.root",
     // "../Analyzer/OI_default.root",
-    // "../Analyzer/OI_FromL1.root",
-    // "../Analyzer/OI_FromL1Tk.root",
+    // "../Analyzer/OI_default.root",
+    // "../Analyzer/OI_default.root",
+
+    "../Analyzer/OI_default.root",
+    "../Analyzer/OI_FromL1.root",
+    "../Analyzer/OI_FromL1Tk.root",
   };
 
   vector<TString> types = {
-    "Eff/num_Eff_L1Muon_genpt26",
-    "Eff/num_Eff_L1TkMuon_genpt26",
-    "Eff/num_Eff_L2Muon_genpt26",
-    
+    // "Eff/den_Eff_L1Muon_genpt26",
+    // "Eff/den_Eff_L1TkMuon_genpt26",
+    // "Eff/den_Eff_L2Muon_genpt26",
+
+    // "Eff/den_Eff_L3OI_L3pt24",
+    // "Eff/den_Eff_L3OI_L3pt24",
+    // "Eff/den_Eff_L3OI_L3pt24",
+
+    "Eff/num_Eff_L3OI_L3pt24",
+    "Eff/num_Eff_L3OI_L3pt24",
+    "Eff/num_Eff_L3OI_L3pt24",
+
+    // "Res/Res_L3OI_genpt26",
+    // "Res/Res_L3OI_genpt26",
+    // "Res/Res_L3OI_genpt26",
+
+    // "Res/Res_sig_L3OI_genpt26",
+    // "Res/Res_sig_L3OI_genpt26",
+    // "Res/Resk_sig_L3OI_genpt26",
+
+    // "Eff/num_Eff_L1Muon_genpt26",
+    // "Eff/num_Eff_L1TkMuon_genpt26",
+    // "Eff/num_Eff_L2Muon_genpt26",
     // "Eff/num_Eff_L3OI_genpt26",
     // "Eff/num_Eff_L3OI_genpt26",
     // "Eff/num_Eff_L3OI_genpt26",
-
-    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
-
-
-  };
-
-  vector<TString> types_den = {
-    "Eff/den_Eff_L1Muon_genpt26",
-    "Eff/den_Eff_L1TkMuon_genpt26",
-    "Eff/den_Eff_L2Muon_genpt26",
-    
-    // "Eff/den_Eff_L3OI_genpt26",
-    // "Eff/den_Eff_L3OI_genpt26",
-    // "Eff/den_Eff_L3OI_genpt26",
-
-    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
   };
 
   vector<TString> types_str = {
-    "L1 Muon",
-    "L1 TkMuon",
-    "L2 Muon (From L1 TkMuon)",
+    // "L1 Muon",
+    // "L1 TkMuon",
+    // "L2 Muon (From L1 TkMuon)",
 
-    // "OI FromL2 (default)",
-    // "OI FromL1",
-    // "OI FromL1Tk",
+    "OI FromL2 (default)",
+    "OI FromL1",
+    "OI FromL1Tk",
 
     // "Unlimited",
     // "Maximum # of seeds = 100",
@@ -245,128 +245,81 @@ void drawBDTEff_binary(
     // "Maximum # of seeds = 0",
   };
 
-  for(int ivar=0; ivar<(int)v_var.size(); ++ivar) {
+  for(int ivar=0; ivar<v_var.size(); ++ivar) {
 
-    double xmin = range.at(ivar).at(1);
-    double xmax = range.at(ivar).at(2);
-    double ymin = 0.8;
-    double ymax = 1.1;
+    double xmin = -0.5;
+    double xmax = 0.5;
 
-    // if(!v_var.at(ivar).Contains("pt")) {
-    //   ymin = 0.8;
-    //   ymax = 1.15;
-    // }
-
-    // if(eff_tag=="L3Iter0FromL1" && !v_var.at(ivar).Contains("pt")) {
-    //   ymin = 0.4;
-    //   ymax = 1.15;
-    // }
-
-    // if(eff_tag=="L3Iter2FromL1") {
-    //   ymin = 0.0;
-    //   ymax = 0.8;
-    // }
-
-
-    TString canvasName = TString::Format("Eff_%s_%s_%s", tag.Data(), eff_tag.Data(), v_var.at(ivar).Data() );
+    TString canvasName = TString::Format("Eff_%s_%s_KIN", tag.Data(), eff_tag.Data());
     canvasName.ReplaceAll(".","p").ReplaceAll("-","_");
     TCanvas *c;
     SetCanvas_Square( c, canvasName, kFALSE, kFALSE, 900, 900 );
     c->cd();
-    if(isLogy)
-      c->SetLogy();
 
     TLegend *legend;
     SetLegend( legend, 0.15, 0.70, 0.90, 0.87, -1);
 
     bool isFirst = true;
     for(int i = 0; i<(int)types_file.size(); ++i) {
-    // for(int i = (int)types.size()-1; i>-1; --i) {
 
-      TString the_type_num = types.at(i);
-      TString the_type_den = types_den.at(i);
-      TString the_type_str = types_str.at(i);
-      TString fileName = types_file.at(i);
+      TString titleX = GetTitleX(v_var.at(ivar)+"_offline");
+      TString titleY = "nMuons";
 
-      std::cout << the_type_num << std::endl;
-      std::cout << the_type_den << std::endl;
-      std::cout << the_type_str << std::endl;
-      std::cout << fileName << std::endl;
-
-
-      TString titleX = GetTitleX(v_var.at(ivar)+"_gen");
-      TString titleY = "L3 reconstruction eff";
-
-      TString den_name = TString::Format("%s_%s", the_type_den.Data(), v_var.at(ivar).Data() );
-      TString num_name = TString::Format("%s_%s", the_type_num.Data(), v_var.at(ivar).Data() );
-
-      // if(v_var.at(ivar) == "pt") {
-      //   den_name = den_name.ReplaceAll("genpt26", "L3pt24");
-      //   num_name = num_name.ReplaceAll("genpt26", "L3pt24");
-      // }
-
-      //std::cout << "Filename : " << fileName << " , den_name : " << den_name << std::endl;
-      TH1F* den = Get_Hist( fileName, den_name );
-      //std::cout << "Den filled" << std::endl;
-      //std::cout << "Filename : " << fileName << " , num_name : " << num_name << std::endl;
-      TH1F* num = Get_Hist( fileName, num_name );
-      //std::cout << "Num filled" << std::endl;
+      TString den_name = types.at(i) + "_" + v_var.at(ivar);
 
       if(v_var.at(ivar) == "pt") {
-        den = (TH1F*)den->Rebin(n_pt_bins, den_name+"_rb", pt_bins);
-        num = (TH1F*)num->Rebin(n_pt_bins, num_name+"_rb", pt_bins);
-      }
-      else if(v_var.at(ivar) == "eta") {
-        den = (TH1F*)den->Rebin(n_eta_bins, den_name+"_rb", eta_bins);
-        num = (TH1F*)num->Rebin(n_eta_bins, num_name+"_rb", eta_bins);
-      }
-      else{
-        den = (TH1F*)den->Rebin(range.at(ivar)[0]);
-        num = (TH1F*)num->Rebin(range.at(ivar)[0]);
+        den_name = den_name.ReplaceAll("L3pt24", "L3pt0");
       }
 
-      int nbins = den->GetNbinsX();
+  
+      TH1F* den_clone = Get_Hist( types_file.at(i), den_name );
+      // auto den_clone = (TH1F*)den->Clone(den_name+"_clone");
+      // den_clone->Reset("ICES");
+      
+      // if(v_var.at(ivar) == "pt") {
+      //   den_clone = (TH1F*)den->Rebin(n_pt_bins, den_name+"_rb", pt_bins);
+      // }
+      // else if(v_var.at(ivar) == "eta") {
+      //   den_clone = (TH1F*)den->Rebin(n_eta_bins, den_name+"_rb", eta_bins);
+      // }
+      // else{
+      //   den_clone = (TH1F*)den->Rebin(range.at(ivar)[0]);
+      // }
+      
+
+
 
       c->cd();
 
-      TGraphAsymmErrors* g = new TGraphAsymmErrors(nbins);
-      g->Divide(num, den, "n e0");
+      den_clone->SetTitle("");
+      den_clone->SetStats(0);
+      // den_clone->SetMarkerSize(markersize);
+      // den_clone->SetMarkerStyle(v_marker.at(i));
+      // den_clone->SetMarkerColor(v_color.at(i));
+      den_clone->SetLineColor(  v_color.at(i));
+      den_clone->SetLineWidth(2);
 
-      for(int ip=0; ip<nbins; ++ip) {
-        if(g->GetPointY(ip) == 0.)  g->SetPointEYhigh(ip, 0.0);
-      }
+      std::cout << " " << den_clone->GetMaximum() << " " << den_clone->GetEntries() << std::endl;
 
-      double markersize = 1.0;
-      // if(markersize < 1.0)
-        markersize = 1.0;
-
-      g->SetTitle("");
-      g->SetMarkerSize(markersize);
-      g->SetMarkerStyle(v_marker.at(i));
-      g->SetMarkerColor(v_color.at(i));
-      g->SetLineColor(  v_color.at(i));
-      g->SetLineWidth(1);
-
-      g->GetXaxis()->SetLimits( xmin, xmax );
-      g->GetXaxis()->SetRangeUser( xmin, xmax );
-      g->GetYaxis()->SetRangeUser( ymin, ymax );
-
-      SetAxis_SinglePad( g->GetXaxis(), g->GetYaxis(), titleX, titleY );
+      // SetAxis_SinglePad( den->GetXaxis(), den->GetYaxis(), titleX, titleY );
 
       if(isFirst) {
-        g->Draw("APE");
+        TH1D* frame = new TH1D("frame", "", 1, range.at(ivar)[1], range.at(ivar)[2]);
+        frame->SetStats(0);
+        frame->GetYaxis()->SetRangeUser(0, den_clone->GetMaximum()*1.5);
+        SetAxis_SinglePad( frame->GetXaxis(), frame->GetYaxis(), titleX, titleY );
+        frame->Draw("HIST");
         isFirst = false;
       }
-      else {
-        g->Draw("PE same");
-      }
 
-      if( v_var.at(ivar) == "pu" ) {
-        int thep = tag.Contains("PU200") ? 200 : 140;
-        legend->AddEntry( g, TString::Format("%s  %.5f", the_type_str.Data(), g->GetPointY(thep)), "lep" );
-      }
-      else
-        legend->AddEntry( g, TString::Format("%s", the_type_str.Data()), "lep" );
+      if (i == 1) den_clone->Scale(984000./953000.);
+
+      den_clone->Draw("HIST same");
+
+
+
+      legend->AddEntry( den_clone, types_str.at(i), "lep" );
+
     }
 
     legend->Draw();
@@ -374,13 +327,11 @@ void drawBDTEff_binary(
     TLatex latex;
     Latex_Simulation_14TeV( latex );
     latex.DrawLatexNDC( 0.45,0.96, "#scale[0.8]{#font[42]{"+SAMPLE+"}}");
-    if(v_var.at(ivar) != "pt" )
-      latex.DrawLatexNDC(0.16, 0.89, "#font[42]{#scale[0.8]{"+gen_pt_min_str+"}}");
+    if(!(v_var.at(ivar) == "pt")) latex.DrawLatexNDC(0.16, 0.89, "#font[42]{#scale[0.8]{"+L3_pt_min_str+"}}");
 
-    TString logy_tag = isLogy ? "_log" : "";
     c->Modified();  c->Update();  c->RedrawAxis();
     gROOT->ProcessLine( "gErrorIgnoreLevel = 2001;");
-    c->SaveAs(Dir+canvasName+logy_tag+".pdf","pdf");
+    c->SaveAs(Dir+canvasName+"_"+v_var.at(ivar)+"_genMatching.pdf","pdf");
     // c->SaveAs(Dir+canvasName+logy_tag+".png","png");
     gROOT->ProcessLine( "gErrorIgnoreLevel = kPrint;");
 

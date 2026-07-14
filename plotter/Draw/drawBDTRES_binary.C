@@ -128,7 +128,7 @@ double eta_bins_more[21] = {
 // rootbq 'drawBDTEff_binary.C("v30", "DY PU200", "PU200-DYToLL_M50", "L1Tk")'
 // rootbq 'drawBDTEff_binary.C("v30", "DY PU200", "PU200-DYToLL_M50", "")'
 
-void drawBDTEff_binary(
+void drawBDTRES_binary(
   TString ver = "v00", TString SAMPLE = "DY PU200", TString tag = "PU200-DYToLL_M50",
   TString eff_tag = "L3IOFromL1", bool isLogy = false  // HERE
 ) {
@@ -143,7 +143,7 @@ void drawBDTEff_binary(
     gSystem->mkdir(Dir,kTRUE);
 
 
-  TString L3_pt_min_str = "p_{T}^{HLT} > 24 GeV";
+  TString L3_pt_min_str = "p_{T}^{HLT} > 26 GeV";
   TString gen_pt_min_str = "p_{T}^{gen} > 26 GeV";
 
   vector<Color_t> v_color = {
@@ -194,39 +194,31 @@ void drawBDTEff_binary(
     "../Analyzer/OI_default.root",
     "../Analyzer/OI_default.root",
     "../Analyzer/OI_default.root",
+
     // "../Analyzer/OI_default.root",
     // "../Analyzer/OI_FromL1.root",
     // "../Analyzer/OI_FromL1Tk.root",
   };
 
   vector<TString> types = {
-    "Eff/num_Eff_L1Muon_genpt26",
-    "Eff/num_Eff_L1TkMuon_genpt26",
-    "Eff/num_Eff_L2Muon_genpt26",
-    
+    "Res/Res_L1Muon_genpt26",
+    "Res/Res_L1TkMuon_genpt26",
+    "Res/Res_L2Muon_genpt26",
+
+    // "Res/Res_L3OI_genpt26",
+    // "Res/Res_L3OI_genpt26",
+    // "Res/Res_L3OI_genpt26",
+
+    // "Res/Res_sig_L3OI_genpt26",
+    // "Res/Res_sig_L3OI_genpt26",
+    // "Res/Resk_sig_L3OI_genpt26",
+
+    // "Eff/num_Eff_L1Muon_genpt26",
+    // "Eff/num_Eff_L1TkMuon_genpt26",
+    // "Eff/num_Eff_L2Muon_genpt26",
     // "Eff/num_Eff_L3OI_genpt26",
     // "Eff/num_Eff_L3OI_genpt26",
     // "Eff/num_Eff_L3OI_genpt26",
-
-    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/num_Eff_L1Tk_L3OI_L3pt24",
-
-
-  };
-
-  vector<TString> types_den = {
-    "Eff/den_Eff_L1Muon_genpt26",
-    "Eff/den_Eff_L1TkMuon_genpt26",
-    "Eff/den_Eff_L2Muon_genpt26",
-    
-    // "Eff/den_Eff_L3OI_genpt26",
-    // "Eff/den_Eff_L3OI_genpt26",
-    // "Eff/den_Eff_L3OI_genpt26",
-
-    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
-    // "Eff/den_Eff_L1Tk_L3OI_L3pt24",
   };
 
   vector<TString> types_str = {
@@ -245,128 +237,82 @@ void drawBDTEff_binary(
     // "Maximum # of seeds = 0",
   };
 
-  for(int ivar=0; ivar<(int)v_var.size(); ++ivar) {
+  for(int ivar=0; ivar<1; ++ivar) {
 
-    double xmin = range.at(ivar).at(1);
-    double xmax = range.at(ivar).at(2);
-    double ymin = 0.8;
-    double ymax = 1.1;
+    double xmin = -0.5;
+    double xmax = 0.5;
 
-    // if(!v_var.at(ivar).Contains("pt")) {
-    //   ymin = 0.8;
-    //   ymax = 1.15;
-    // }
-
-    // if(eff_tag=="L3Iter0FromL1" && !v_var.at(ivar).Contains("pt")) {
-    //   ymin = 0.4;
-    //   ymax = 1.15;
-    // }
-
-    // if(eff_tag=="L3Iter2FromL1") {
-    //   ymin = 0.0;
-    //   ymax = 0.8;
-    // }
-
-
-    TString canvasName = TString::Format("Eff_%s_%s_%s", tag.Data(), eff_tag.Data(), v_var.at(ivar).Data() );
+    TString canvasName = TString::Format("Eff_%s_%s_RES", tag.Data(), eff_tag.Data());
     canvasName.ReplaceAll(".","p").ReplaceAll("-","_");
     TCanvas *c;
     SetCanvas_Square( c, canvasName, kFALSE, kFALSE, 900, 900 );
     c->cd();
-    if(isLogy)
-      c->SetLogy();
 
     TLegend *legend;
     SetLegend( legend, 0.15, 0.70, 0.90, 0.87, -1);
 
     bool isFirst = true;
     for(int i = 0; i<(int)types_file.size(); ++i) {
-    // for(int i = (int)types.size()-1; i>-1; --i) {
 
-      TString the_type_num = types.at(i);
-      TString the_type_den = types_den.at(i);
-      TString the_type_str = types_str.at(i);
-      TString fileName = types_file.at(i);
+      TString titleX = "(p_{T}^{HLT} - p_{T}^{gen}) / p_{T}^{gen}";
+      TString titleY = "normalized";
 
-      std::cout << the_type_num << std::endl;
-      std::cout << the_type_den << std::endl;
-      std::cout << the_type_str << std::endl;
-      std::cout << fileName << std::endl;
+      TString den_name = types.at(i);
+  
+      TH1F* den_origin = Get_Hist( types_file.at(i), den_name );
 
+      TH1F* den = new TH1F(den_name+"_norm", "", 500, -2.5, 2.5);
+      
+      den->Reset("ICES");
 
-      TString titleX = GetTitleX(v_var.at(ivar)+"_gen");
-      TString titleY = "L3 reconstruction eff";
+      for (int ibin = 1; ibin <= den_origin->GetNbinsX(); ++ibin) {
+        if (den_origin->GetBinCenter(ibin) < -0.7) 
+          continue;
 
-      TString den_name = TString::Format("%s_%s", the_type_den.Data(), v_var.at(ivar).Data() );
-      TString num_name = TString::Format("%s_%s", the_type_num.Data(), v_var.at(ivar).Data() );
-
-      // if(v_var.at(ivar) == "pt") {
-      //   den_name = den_name.ReplaceAll("genpt26", "L3pt24");
-      //   num_name = num_name.ReplaceAll("genpt26", "L3pt24");
-      // }
-
-      //std::cout << "Filename : " << fileName << " , den_name : " << den_name << std::endl;
-      TH1F* den = Get_Hist( fileName, den_name );
-      //std::cout << "Den filled" << std::endl;
-      //std::cout << "Filename : " << fileName << " , num_name : " << num_name << std::endl;
-      TH1F* num = Get_Hist( fileName, num_name );
-      //std::cout << "Num filled" << std::endl;
-
-      if(v_var.at(ivar) == "pt") {
-        den = (TH1F*)den->Rebin(n_pt_bins, den_name+"_rb", pt_bins);
-        num = (TH1F*)num->Rebin(n_pt_bins, num_name+"_rb", pt_bins);
-      }
-      else if(v_var.at(ivar) == "eta") {
-        den = (TH1F*)den->Rebin(n_eta_bins, den_name+"_rb", eta_bins);
-        num = (TH1F*)num->Rebin(n_eta_bins, num_name+"_rb", eta_bins);
-      }
-      else{
-        den = (TH1F*)den->Rebin(range.at(ivar)[0]);
-        num = (TH1F*)num->Rebin(range.at(ivar)[0]);
+        den->SetBinContent(ibin, den_origin->GetBinContent(ibin));
+        den->SetBinError(ibin, den_origin->GetBinError(ibin));
       }
 
-      int nbins = den->GetNbinsX();
+
+
+      double den_rms = den->GetRMS();
+      den->SetStats(0);
+
+      den->Scale(1./den_origin->GetEntries());
+
+      // den->GetXaxis()->SetLimits(-0.03, 0.03);
+      // den->GetXaxis()->SetRangeUser(-0.03, 0.03);
+      // den->GetYaxis()->SetRangeUser(0, 1.5);
+
+
 
       c->cd();
 
-      TGraphAsymmErrors* g = new TGraphAsymmErrors(nbins);
-      g->Divide(num, den, "n e0");
+      den->SetTitle("");
+      // den->SetMarkerSize(markersize);
+      // den->SetMarkerStyle(v_marker.at(i));
+      // den->SetMarkerColor(v_color.at(i));
+      den->SetLineColor(  v_color.at(i));
+      den->SetLineWidth(2);
 
-      for(int ip=0; ip<nbins; ++ip) {
-        if(g->GetPointY(ip) == 0.)  g->SetPointEYhigh(ip, 0.0);
-      }
-
-      double markersize = 1.0;
-      // if(markersize < 1.0)
-        markersize = 1.0;
-
-      g->SetTitle("");
-      g->SetMarkerSize(markersize);
-      g->SetMarkerStyle(v_marker.at(i));
-      g->SetMarkerColor(v_color.at(i));
-      g->SetLineColor(  v_color.at(i));
-      g->SetLineWidth(1);
-
-      g->GetXaxis()->SetLimits( xmin, xmax );
-      g->GetXaxis()->SetRangeUser( xmin, xmax );
-      g->GetYaxis()->SetRangeUser( ymin, ymax );
-
-      SetAxis_SinglePad( g->GetXaxis(), g->GetYaxis(), titleX, titleY );
+      // SetAxis_SinglePad( den->GetXaxis(), den->GetYaxis(), titleX, titleY );
 
       if(isFirst) {
-        g->Draw("APE");
+
+        TH1D* frame = new TH1D("frame", "", 20, -1, 1);
+        frame->SetStats(0);
+        frame->GetYaxis()->SetRangeUser(0, 0.4);
+        SetAxis_SinglePad( frame->GetXaxis(), frame->GetYaxis(), titleX, titleY );
+        frame->Draw("HIST");
         isFirst = false;
       }
-      else {
-        g->Draw("PE same");
-      }
 
-      if( v_var.at(ivar) == "pu" ) {
-        int thep = tag.Contains("PU200") ? 200 : 140;
-        legend->AddEntry( g, TString::Format("%s  %.5f", the_type_str.Data(), g->GetPointY(thep)), "lep" );
-      }
-      else
-        legend->AddEntry( g, TString::Format("%s", the_type_str.Data()), "lep" );
+      den->Draw("HIST same");
+
+
+
+      legend->AddEntry( den, TString::Format("%s - RMS: %0.4f", types_str.at(i).Data(), den_rms), "lep" );
+
     }
 
     legend->Draw();
@@ -374,13 +320,11 @@ void drawBDTEff_binary(
     TLatex latex;
     Latex_Simulation_14TeV( latex );
     latex.DrawLatexNDC( 0.45,0.96, "#scale[0.8]{#font[42]{"+SAMPLE+"}}");
-    if(v_var.at(ivar) != "pt" )
-      latex.DrawLatexNDC(0.16, 0.89, "#font[42]{#scale[0.8]{"+gen_pt_min_str+"}}");
+    latex.DrawLatexNDC(0.16, 0.89, "#font[42]{#scale[0.8]{"+L3_pt_min_str+"}}");
 
-    TString logy_tag = isLogy ? "_log" : "";
     c->Modified();  c->Update();  c->RedrawAxis();
     gROOT->ProcessLine( "gErrorIgnoreLevel = 2001;");
-    c->SaveAs(Dir+canvasName+logy_tag+".pdf","pdf");
+    c->SaveAs(Dir+canvasName+".pdf","pdf");
     // c->SaveAs(Dir+canvasName+logy_tag+".png","png");
     gROOT->ProcessLine( "gErrorIgnoreLevel = kPrint;");
 

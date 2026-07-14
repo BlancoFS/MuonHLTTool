@@ -172,6 +172,7 @@ public:
       int the_i = -1e9;
 
       unsigned n = objects.size();
+
       for(unsigned i=0; i<n; ++i) {
         if( map[i] > 0 )  continue;
 
@@ -3642,15 +3643,15 @@ vector<Object> MuonHLTNtuple_binary::get_L1TkMuons()
         obj.addVar( "pt", L1TkMu_pt->at(i) );
         obj.addVar( "eta", L1TkMu_eta->at(i) );
         obj.addVar( "phi", L1TkMu_phi->at(i) );
-        obj.addVar( "trkIsol", L1TkMu_trkIsol->at(i) );
-        obj.addVar( "trkzVtx", L1TkMu_trkzVtx->at(i) );
+        // obj.addVar( "trkIsol", L1TkMu_trkIsol->at(i) );
+        // obj.addVar( "trkzVtx", L1TkMu_trkzVtx->at(i) );
         // obj.addVar( "dR", L1TkMu_dR->at(i) );
         // obj.addVar( "nTracksMatched", L1TkMu_nTracksMatched->at(i) );
         // obj.addVar( "trackCurvature", L1TkMu_trackCurvature->at(i) );
-        obj.addVar( "quality", L1TkMu_quality->at(i) );
+        // obj.addVar( "quality", L1TkMu_quality->at(i) );
         // obj.addVar( "pattern", L1TkMu_pattern->at(i) );
         // obj.addVar( "muonDetector", L1TkMu_muonDetector->at(i) );
-        obj.addVar( "TTTpointer", L1TkMu_TTTpointer->at(i) );
+        // obj.addVar( "TTTpointer", L1TkMu_TTTpointer->at(i) );
         // obj.addVar( "muRefHwPt", L1TkMu_muRefHwPt->at(i) );
         // obj.addVar( "muRefHwDXY", L1TkMu_muRefHwDXY->at(i) );
         // obj.addVar( "muRefHwEta", L1TkMu_muRefHwEta->at(i) );
@@ -3658,7 +3659,7 @@ vector<Object> MuonHLTNtuple_binary::get_L1TkMuons()
         // obj.addVar( "muRefHwSign", L1TkMu_muRefHwSign->at(i) );
         // obj.addVar( "muRefHwSignValid", L1TkMu_muRefHwSignValid->at(i) );
         // obj.addVar( "muRefHwQual", L1TkMu_muRefHwQual->at(i) );
-        obj.addVar( "offlinePt", TkMuonOfflineEt(L1TkMu_pt->at(i), L1TkMu_eta->at(i)) );
+        // obj.addVar( "offlinePt", TkMuonOfflineEt(L1TkMu_pt->at(i), L1TkMu_eta->at(i)) );
 
         out.push_back(obj);
     }
