@@ -1,0 +1,5 @@
+<lcgdict>
+  <class name="MuonSegmentLink" />
+  <class name="std::vector<MuonSegmentLink>" />
+  <class name="edm::Wrapper<std::vector<MuonSegmentLink> >" />
+</lcgdict>
