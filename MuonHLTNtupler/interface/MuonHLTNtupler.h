@@ -111,6 +111,8 @@
 #include "Geometry/Records/interface/TrackerTopologyRcd.h"
 
 #include "MuonHLTTool/MuonHLTNtupler/interface/MuonHLTobjCorrelator.h"
+#include "MuonHLTTool/MuonHLTNtupler/interface/GenericMuonCollections.h"
+#include "MuonHLTTool/MuonHLTNtupler/interface/MuonHLTTriggerMatching.h"
 
 #include "TTree.h"
 #include "TString.h"
@@ -119,7 +121,7 @@ using namespace std;
 using namespace reco;
 using namespace edm;
 
-class MuonHLTNtupler : public edm::one::EDAnalyzer<>
+class MuonHLTNtupler : public edm::one::EDAnalyzer<edm::one::WatchRuns>
 {
 public:
   MuonHLTNtupler(const edm::ParameterSet &iConfig);
@@ -128,8 +130,8 @@ public:
   virtual void analyze(const edm::Event &iEvent, const edm::EventSetup &iSetup);
   virtual void beginJob();
   virtual void endJob();
-  virtual void beginRun(const edm::Run &iRun, const edm::EventSetup &iSetup);
-  virtual void endRun(const edm::Run &iRun, const edm::EventSetup &iSetup);
+  virtual void beginRun(const edm::Run &iRun, const edm::EventSetup &iSetup) override;
+  virtual void endRun(const edm::Run &iRun, const edm::EventSetup &iSetup) override;
 
 private:
   void Init();
@@ -137,7 +139,7 @@ private:
   void Fill_L1Track(const edm::Event &iEvent, const edm::EventSetup &iSetup);
   void Fill_HLT(const edm::Event &iEvent, bool isMYHLT);
   void Fill_Muon(const edm::Event &iEvent);
-  void Fill_HLTMuon(const edm::Event &iEvent);
+  void Fill_GenericMuonCollections(const edm::Event &iEvent);
   void Fill_L1Muon(const edm::Event &iEvent);
   void Fill_L1TkMuon(const edm::Event &iEvent);
   void Fill_GenParticle(const edm::Event &iEvent);
@@ -150,6 +152,22 @@ private:
   bool SavedFilterCondition( std::string& filterName );
 
   bool isNewHighPtMuon(const reco::Muon& muon, const reco::Vertex& vtx);
+
+  // -- looks up a named entry of muonCollectionCfgs_/muonCollectionAdapters_
+  //    at the current event; used by the two legacy MVA/isolation helper
+  //    functions below that need to know whether a specific generic
+  //    collection (by its configured name, e.g. "L3Muon"/"L2Muon") was
+  //    present in this event, without giving them back a dedicated token.
+  bool isMuonCollectionValid(const std::string& name) const;
+
+  // -- fill_trackTemplate()'s isolation-map lookup needs an actual
+  //    edm::Ref into the L3Muon collection (reco::IsoDepositMap is keyed
+  //    by Ref, so a type-erased GenericMuon can't serve this) -- this
+  //    token is consumed from the same InputTag as the "L3Muon" entry of
+  //    muonCollections, so the label still only has to be set in one
+  //    place (ntupler_cfi.py), but a strongly-typed handle is still
+  //    available where the code genuinely needs one.
+  edm::EDGetTokenT<reco::RecoChargedCandidateCollection> t_L3MuonForIso_;
 
   bool doMVA;
   bool doSeed;
@@ -175,18 +193,70 @@ private:
   edm::EDGetTokenT< edm::TriggerResults >                    t_myTriggerResults_;
   edm::EDGetTokenT< trigger::TriggerEvent >                  t_myTriggerEvent_;
   
-  edm::EDGetTokenT< reco::RecoChargedCandidateCollection >   t_L3Muon_;
-  edm::EDGetTokenT< reco::TrackCollection >                  t_L2Muon_;
   edm::EDGetTokenT< l1t::MuonBxCollection >                  t_L1Muon_;
   edm::EDGetTokenT< l1t::TrackerMuonCollection >             t_L1TkMuon_;
-  edm::EDGetTokenT< reco::RecoChargedCandidateCollection >   t_TkMuon_;
 
-  edm::EDGetTokenT< std::vector<reco::MuonTrackLinks> >      t_iterL3OI_;
-  edm::EDGetTokenT< std::vector<reco::MuonTrackLinks> >      t_iterL3IOFromL2_;
-  edm::EDGetTokenT< std::vector<reco::MuonTrackLinks> >      t_iterL3FromL2_;
   edm::EDGetTokenT< std::vector<reco::Track> >               t_iterL3IOFromL1_;
   edm::EDGetTokenT< std::vector<reco::Muon> >                t_iterL3MuonNoID_;
   edm::EDGetTokenT< std::vector<reco::Muon> >                t_iterL3Muon_;
+
+  // -- L2Muon, L3Muon, TkMuon, iterL3OI, iterL3IOFromL2, iterL3FromL2 used
+  //    to each have a dedicated token + dedicated Fill_* code here. They are
+  //    now handled generically -- see muonCollectionCfgs_/muonCollectionAdapters_
+  //    below and GenericMuonCollections.h. Adding, removing, or renaming one
+  //    of these (or any future HLT muon collection) is now a python-only
+  //    change; L1Muon/L1TkMuon/iterL3Muon/iterL3MuonNoID/iterL3IOFromL1 stay
+  //    as dedicated members above because they carry additional structure
+  //    (hardware words, ID flags, seed-matching side effects) that a plain
+  //    pt/eta/phi/charge record doesn't capture -- see REFACTOR_NOTES.md.
+  std::vector<MuonCollectionCfg> muonCollectionCfgs_;
+  std::vector<std::unique_ptr<IMuonCollectionAdapter>> muonCollectionAdapters_;
+  // -- names of muonCollectionCfgs_, in order; written to the tree as its
+  //    own branch (see Make_Branch()) so downstream analysis code can
+  //    discover which collections exist in a given file instead of
+  //    hardcoding a list, the same way configuredTriggerFilters/Paths
+  //    already let it discover filters/paths.
+  std::vector<std::string> muonCollectionNamesForBranch_;
+  // -- one entry per muonCollectionCfgs_; set after the first time a given
+  //    collection is found invalid, so the LogWarning in
+  //    Fill_GenericMuonCollections() fires once per job (per collection)
+  //    instead of once per event.
+  mutable std::vector<bool> warnedCollectionInvalid_;
+
+  std::vector<std::string> triggerPathsCfg_;       // unversioned, from python
+  std::vector<std::string> triggerFiltersCfg_;      // from python
+  std::vector<std::string> resolvedTriggerPaths_;   // versioned, filled in beginRun
+  std::vector<std::string> resolvedPathLastFilter_; // one per resolvedTriggerPaths_ entry,
+                                                     // filled in beginRun -- see lastFilterOfPath()
+  double maxDR_;                                    // trigger-matching cone size
+  HLTConfigProvider hltConfig_;
+
+  // -- one entry per name in muonCollectionCfgs_; std::map node addresses
+  //    are stable across insertion, so &genPt_[name] taken once in
+  //    Make_Branch() stays valid after later insertions into the map.
+  std::map<std::string, std::vector<float>> genPt_, genEta_, genPhi_, genCharge_, genTrackPt_;
+  // -- only populated (non -99) for collections of type "MuonTrackLinks"
+  //    (iterL3OI, iterL3IOFromL2, iterL3FromL2 by default); -99 elsewhere.
+  //    Preserves the old inner/outer/global branch triplets without a
+  //    dedicated array per collection.
+  std::map<std::string, std::vector<float>> genInnerPt_, genInnerEta_, genInnerPhi_, genInnerCharge_;
+  std::map<std::string, std::vector<float>> genOuterPt_, genOuterEta_, genOuterPhi_, genOuterCharge_;
+  std::map<std::string, std::vector<float>> genGlobalPt_, genGlobalEta_, genGlobalPhi_, genGlobalCharge_;
+  // -- one INNER vector per muon (same indexing as genPt_[name], etc.):
+  //    genTrigMatchedFilterIdx_[name][i] lists the indices (into
+  //    triggerFiltersCfg_/"configuredTriggerFilters") of every configured
+  //    filter that muon i matched within maxDR_; genTrigDR_[name][i] is
+  //    the parallel list of dR values. Usually 0 or 1 entries per muon for
+  //    an exclusive single-object trigger, but can be more.
+  std::map<std::string, std::vector<std::vector<int>>>   genTrigMatchedFilterIdx_;
+  std::map<std::string, std::vector<std::vector<float>>> genTrigDR_;
+
+  // -- same idea, but per configured PATH (matched against that path's
+  //    last filter -- see resolvedPathLastFilter_) rather than per
+  //    individually-configured filter. Indices refer to
+  //    triggerPathsCfg_/"configuredTriggerPaths", same ordering.
+  std::map<std::string, std::vector<std::vector<int>>>   genPathMatchedIdx_;
+  std::map<std::string, std::vector<std::vector<float>>> genPathDR_;
 
   edm::EDGetTokenT< reco::VertexCollection >                 t_hltIterL3MuonTrimmedPixelVertices_;
   edm::EDGetTokenT< reco::VertexCollection >                 t_hltIterL3FromL1MuonTrimmedPixelVertices_;
@@ -508,21 +578,8 @@ private:
   std::map<tmpTSOD,unsigned int> hltIter2IterL3FromL1MuonTrackMap;
   std::map<tmpTSOD,unsigned int> hltIter3IterL3FromL1MuonTrackMap;
 
-  // -- L3 muon
-  int nL3Muon_;
-  double L3Muon_pt_[arrSize_];
-  double L3Muon_eta_[arrSize_];
-  double L3Muon_phi_[arrSize_];
-  double L3Muon_charge_[arrSize_];
-  double L3Muon_trkPt_[arrSize_];
-
-  // -- L2 muon
-  int nL2Muon_;
-  double L2Muon_pt_[arrSize_];
-  double L2Muon_eta_[arrSize_];
-  double L2Muon_phi_[arrSize_];
-  double L2Muon_charge_[arrSize_];
-  double L2Muon_trkPt_[arrSize_];
+  // -- L3Muon and L2Muon are now filled generically -- see genPt_/genEta_/...
+  //    above and Fill_GenericMuonCollections() in the .cc.
 
   // -- L1 muon
   int nL1Muon_;
@@ -543,56 +600,8 @@ private:
   double L1TkMuon_etaAtVtx_[arrSize_];
   double L1TkMuon_phiAtVtx_[arrSize_];
 
-  // -- Tracker muon
-  int nTkMuon_;
-  double TkMuon_pt_[arrSize_];
-  double TkMuon_eta_[arrSize_];
-  double TkMuon_phi_[arrSize_];
-  double TkMuon_charge_[arrSize_];
-  double TkMuon_trkPt_[arrSize_];
-
-  int    nIterL3OI_;
-  double iterL3OI_inner_pt_[arrSize_];
-  double iterL3OI_inner_eta_[arrSize_];
-  double iterL3OI_inner_phi_[arrSize_];
-  double iterL3OI_inner_charge_[arrSize_];
-  double iterL3OI_outer_pt_[arrSize_];
-  double iterL3OI_outer_eta_[arrSize_];
-  double iterL3OI_outer_phi_[arrSize_];
-  double iterL3OI_outer_charge_[arrSize_];
-  double iterL3OI_global_pt_[arrSize_];
-  double iterL3OI_global_eta_[arrSize_];
-  double iterL3OI_global_phi_[arrSize_];
-  double iterL3OI_global_charge_[arrSize_];
-
-  int    nIterL3IOFromL2_;
-  double iterL3IOFromL2_inner_pt_[arrSize_];
-  double iterL3IOFromL2_inner_eta_[arrSize_];
-  double iterL3IOFromL2_inner_phi_[arrSize_];
-  double iterL3IOFromL2_inner_charge_[arrSize_];
-  double iterL3IOFromL2_outer_pt_[arrSize_];
-  double iterL3IOFromL2_outer_eta_[arrSize_];
-  double iterL3IOFromL2_outer_phi_[arrSize_];
-  double iterL3IOFromL2_outer_charge_[arrSize_];
-  double iterL3IOFromL2_global_pt_[arrSize_];
-  double iterL3IOFromL2_global_eta_[arrSize_];
-  double iterL3IOFromL2_global_phi_[arrSize_];
-  double iterL3IOFromL2_global_charge_[arrSize_];
-
-  // -- iterL3 object from outside-in + inside-out step (from L2)
-  int    nIterL3FromL2_;
-  double iterL3FromL2_inner_pt_[arrSize_];
-  double iterL3FromL2_inner_eta_[arrSize_];
-  double iterL3FromL2_inner_phi_[arrSize_];
-  double iterL3FromL2_inner_charge_[arrSize_];
-  double iterL3FromL2_outer_pt_[arrSize_];
-  double iterL3FromL2_outer_eta_[arrSize_];
-  double iterL3FromL2_outer_phi_[arrSize_];
-  double iterL3FromL2_outer_charge_[arrSize_];
-  double iterL3FromL2_global_pt_[arrSize_];
-  double iterL3FromL2_global_eta_[arrSize_];
-  double iterL3FromL2_global_phi_[arrSize_];
-  double iterL3FromL2_global_charge_[arrSize_];
+  // -- TkMuon, iterL3OI, iterL3IOFromL2, iterL3FromL2 are now filled
+  //    generically too -- see genPt_/genEta_/... above.
 
   int    nIterL3IOFromL1_;
   double iterL3IOFromL1_pt_[arrSize_];
