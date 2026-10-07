@@ -156,7 +156,6 @@ def customizerFuncForMuonHLTNtupler(process, newProcessName="MYHLT", doDYSkim=Fa
         closeFileFast=cms.untracked.bool(False),
     )
 
-    process.mypath = cms.Path(process.hltTPClusterProducer * process.hltTrackAssociatorByHits * process.trackAssoSeq)
     process.myendpath = cms.EndPath(process.ntupler)
 
     return process
