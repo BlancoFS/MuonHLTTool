@@ -60,6 +60,10 @@
 #include "Geometry/Records/interface/TrackerDigiGeometryRecord.h"
 #include "Geometry/TrackerGeometryBuilder/interface/TrackerGeometry.h"
 
+#include "SimDataFormats/TruthInfo/interface/Graph.h"
+#include "SimDataFormats/TruthInfo/interface/LogicalGraphHitIndex.h"
+#include "PhysicsTools/TruthInfo/interface/BranchHitAssociator.h"
+
 #include <map>
 #include <string>
 #include <iomanip>
@@ -80,6 +84,26 @@ t_triggerResults_    ( consumes< edm::TriggerResults >                    (iConf
 t_triggerEvent_      ( consumes< trigger::TriggerEvent >                  (iConfig.getUntrackedParameter<edm::InputTag>("triggerEvent"      )) ),
 t_myTriggerResults_  ( consumes< edm::TriggerResults >                    (iConfig.getUntrackedParameter<edm::InputTag>("myTriggerResults"  )) ),
 t_myTriggerEvent_    ( consumes< trigger::TriggerEvent >                  (iConfig.getUntrackedParameter<edm::InputTag>("myTriggerEvent"    )) ),
+
+graphToken_(consumes<truth::Graph>(iConfig.getParameter<edm::InputTag>("truthGraph"))),
+hitIndexToken_(consumes<truth::LogicalGraphHitIndex>(iConfig.getParameter<edm::InputTag>("hitIndex"))),
+maxScore_(iConfig.getParameter<double>("maxScore")),
+
+t_dtSegments_ (consumes<DTRecSegment4DCollection>(iConfig.getParameter<edm::InputTag>("dtSegments"))),
+t_cscSegments_(consumes<CSCSegmentCollection>    (iConfig.getParameter<edm::InputTag>("cscSegments"))),
+t_gemSegments_(consumes<GEMSegmentCollection>    (iConfig.getParameter<edm::InputTag>("gemSegments"))),
+t_me0Segments_(consumes<ME0SegmentCollection>    (iConfig.getParameter<edm::InputTag>("me0Segments"))),
+runME0_(iConfig.getParameter<bool>("runME0")),
+dtGeomToken_ (esConsumes<DTGeometry,  MuonGeometryRecord>()),
+cscGeomToken_(esConsumes<CSCGeometry, MuonGeometryRecord>()),
+gemGeomToken_(esConsumes<GEMGeometry, MuonGeometryRecord>()),
+
+t_dtRecHits_ (consumes<DTRecHitCollection>   (iConfig.getParameter<edm::InputTag>("dtRecHits"))),
+t_cscRecHits_(consumes<CSCRecHit2DCollection>(iConfig.getParameter<edm::InputTag>("cscRecHits"))),
+t_rpcRecHits_(consumes<RPCRecHitCollection>  (iConfig.getParameter<edm::InputTag>("rpcRecHits"))),
+t_gemRecHits_(consumes<GEMRecHitCollection>  (iConfig.getParameter<edm::InputTag>("gemRecHits"))),
+t_me0RecHits_(consumes<ME0RecHitCollection>  (iConfig.getParameter<edm::InputTag>("me0RecHits"))),
+rpcGeomToken_(esConsumes<RPCGeometry, MuonGeometryRecord>()),
 
 t_hltIterL3MuonTrimmedPixelVertices_       ( consumes< reco::VertexCollection >(iConfig.getUntrackedParameter<edm::InputTag>("hltIterL3MuonTrimmedPixelVertices")) ),
 t_hltIterL3FromL1MuonTrimmedPixelVertices_ ( consumes< reco::VertexCollection >(iConfig.getUntrackedParameter<edm::InputTag>("hltIterL3FromL1MuonTrimmedPixelVertices")) ),
@@ -210,7 +234,8 @@ void MuonHLTNtupler::analyze(const edm::Event &iEvent, const edm::EventSetup &iS
 
   // -- fill each object -------------
   Fill_HLT(iEvent, false);
-  Fill_Muon(iEvent);
+  Fill_Muon(iEvent, isRealData_);
+  Fill_MuonSystem(iEvent, iSetup, isRealData_);  // after Fill_Muon (uses muon_simId_)
   Fill_GenericMuonCollections(iEvent);
   if( !isRealData_ ) {
     Fill_GenParticle(iEvent);
@@ -371,6 +396,29 @@ void MuonHLTNtupler::Init()
     muon_nMatchedRPCLayer_[i] = -999;
     muon_stationMask_[i] = -999;
     muon_expectedNnumberOfMatchedStations_[i] = -999;
+
+    muon_matchChannel_[i] = -999;
+    muon_muSysSimId_[i] = -999;
+    muon_muSysHitPurity_[i] = -999;
+    muon_matched_[i] = -999;
+    muon_simId_[i] = -999;
+    muon_simPdgId_[i] = -999;
+    muon_simHasGen_[i] = -999;
+    muon_simMotherPdgId_[i] = -999;
+    muon_simPt_[i] = -999;
+    muon_simEta_[i] = -999;
+    muon_simPhi_[i] = -999;
+    muon_sharedHits_[i] = -999;
+    muon_hitPurity_[i] = -999;
+    muon_fromW_[i] = -999; 
+    muon_fromZ_[i] = -999;
+    muon_fromTau_[i] = -999;
+    muon_fromLightHadron_[i] = -999;
+    muon_fromB_[i] = -999;
+    muon_fromC_[i] = -999;
+    muon_fromBSM_[i] = -999;
+    muon_isPrompt_[i] = -999;   
+    muon_truthHead_[i] = -999; 
   }
 
   // -- generic muon-like collections (replaces the old per-collection
@@ -392,10 +440,27 @@ void MuonHLTNtupler::Init()
     muonTrack_TrigDR_[cfg.name].clear();
     muonTrack_PathMatchedIdx_[cfg.name].clear();
     muonTrack_PathDR_[cfg.name].clear();
+    muonTrack_OfflineMatchedIdx_[cfg.name].clear();
+    muonTrack_OfflineDR_[cfg.name].clear();
   }
 
   VThltIterL3MuonTrimmedPixelVertices->clear();
   VThltIterL3FromL1MuonTrimmedPixelVertices->clear();
+
+  dtSegs_.clear();
+  cscSegs_.clear();
+  gemSegs_.clear();
+  me0Segs_.clear();
+  dtSeg_nHitsPhi_.clear();
+  dtSeg_nHitsZ_.clear();
+ 
+  dtRecHits_.clear();
+  cscRecHits_.clear();
+  rpcRecHits_.clear();
+  gemRecHits_.clear();
+  me0RecHits_.clear();
+  dtRh_xLeft_.clear();
+  dtRh_xRight_.clear();
 }
 
 void MuonHLTNtupler::Make_Branch()
@@ -521,6 +586,39 @@ void MuonHLTNtupler::Make_Branch()
   ntuple_->Branch("muon_stationMask", &muon_stationMask_, "muon_stationMask[nMuon]/I");
   ntuple_->Branch("muon_expectedNnumberOfMatchedStations", &muon_expectedNnumberOfMatchedStations_, "muon_expectedNnumberOfMatchedStations[nMuon]/I");
 
+  /// Truth Graph information
+  ntuple_->Branch("muon_matchChannel", &muon_matchChannel_, "muon_matchChannel[nMuon]/I");
+  ntuple_->Branch("muon_muSysSimId", &muon_muSysSimId_, "muon_muSysSimId[nMuon]/I");
+  ntuple_->Branch("muon_muSysHitPurity", &muon_muSysHitPurity_, "muon_muSysHitPurity[nMuon]/D");
+  ntuple_->Branch("muon_matched", &muon_matched_, "muon_matched[nMuon]/I");
+  ntuple_->Branch("muon_simId", &muon_simId_, "muon_simId[nMuon]/I");
+  ntuple_->Branch("muon_simPdgId", &muon_simPdgId_, "muon_simPdgId[nMuon]/I");
+  ntuple_->Branch("muon_simHasGen", &muon_simHasGen_, "muon_simHasGen[nMuon]/I");
+  ntuple_->Branch("muon_simMotherPdgId", &muon_simMotherPdgId_, "muon_simMotherPdgId[nMuon]/I");
+  ntuple_->Branch("muon_simPt", &muon_simPt_, "muon_simPt[nMuon]/D");
+  ntuple_->Branch("muon_simEta", &muon_simEta_, "muon_simEta[nMuon]/D");
+  ntuple_->Branch("muon_simPhi", &muon_simPhi_, "muon_simPhi[nMuon]/D");
+  ntuple_->Branch("muon_sharedHits", &muon_sharedHits_, "muon_sharedHits[nMuon]/I");
+  ntuple_->Branch("muon_hitPurity", &muon_hitPurity_, "muon_hitPurity[nMuon]/D");
+  ntuple_->Branch("muon_fromW_", &muon_fromW_, "muon_fromW_[nMuon]/I"); 
+  ntuple_->Branch("muon_fromZ", &muon_fromZ_, "muon_fromZ[nMuon]/I");
+  ntuple_->Branch("muon_fromTau", &muon_fromTau_, "muon_fromTau[nMuon]/I");
+  ntuple_->Branch("muon_fromLightHadron", &muon_fromLightHadron_, "muon_fromLightHadron[nMuon]/I");
+  ntuple_->Branch("muon_fromB", &muon_fromB_, "muon_fromB[nMuon]/I");
+  ntuple_->Branch("muon_fromC", &muon_fromC_, "muon_fromC[nMuon]/I");
+  ntuple_->Branch("muon_fromBSM", &muon_fromBSM_, "muon_fromBSM[nMuon]/I");
+  ntuple_->Branch("muon_isPrompt", &muon_isPrompt_, "muon_isPrompt[nMuon]/I");
+  ntuple_->Branch("muon_truthHead", &muon_truthHead_, "muon_truthHead[nMuon]/I");
+
+  // -- muon segments with TruthGraph origin
+  dtSegs_.setBranch(ntuple_, "dtSeg", "nDTSegments");
+  ntuple_->Branch("dtSeg_nHitsPhi", &dtSeg_nHitsPhi_);
+  ntuple_->Branch("dtSeg_nHitsZ", &dtSeg_nHitsZ_);
+  cscSegs_.setBranch(ntuple_, "cscSeg", "nCSCSegments");
+  gemSegs_.setBranch(ntuple_, "gemSeg", "nGEMSegments");
+  if (runME0_)
+    me0Segs_.setBranch(ntuple_, "me0Seg", "nME0Segments");
+
   // -- generic muon-like collections (default: L3Muon, L2Muon, TkMuon,
   //    iterL3OI, iterL3IOFromL2, iterL3FromL2 -- see ntupler_cfi.py). One
   //    set of branches per configured collection name; the branch *schema*
@@ -561,6 +659,9 @@ void MuonHLTNtupler::Make_Branch()
     //    filter. Indices refer to "configuredTriggerPaths" below.
     ntuple_->Branch((cfg.name + "_pathMatchedIdx").c_str(), &muonTrack_PathMatchedIdx_[cfg.name]);
     ntuple_->Branch((cfg.name + "_pathDR").c_str(),         &muonTrack_PathDR_[cfg.name]);
+
+    ntuple_->Branch((cfg.name + "_OfflineMatchedIdx").c_str(), &muonTrack_OfflineMatchedIdx_[cfg.name]);
+    ntuple_->Branch((cfg.name + "_OfflineDR").c_str(), &muonTrack_OfflineDR_[cfg.name]);
   }
   // -- lookup table for the filter/path indices above; written once per
   //    event (not once per file) so it survives merging ntuples across menus.
@@ -573,9 +674,9 @@ void MuonHLTNtupler::Make_Branch()
 
 }
 
-void MuonHLTNtupler::Fill_Muon(const edm::Event &iEvent)
+void MuonHLTNtupler::Fill_Muon(const edm::Event &iEvent, bool isData)
 {
-  // edm::Handle<std::vector<reco::Muon> > h_offlineMuon;
+  
   edm::Handle< edm::View<reco::Muon> > h_offlineMuon;
   if( iEvent.getByToken(t_offlineMuon_, h_offlineMuon) ) // -- only when the dataset has offline muon collection (e.g. AOD) -- //
   {
@@ -680,9 +781,84 @@ void MuonHLTNtupler::Fill_Muon(const edm::Event &iEvent)
 
       _nMuon++;
     }
-
     nMuon_ = _nMuon;
-  }
+
+    // Perform a truth graph association to gather GEN-SIM information
+    if (!isData){
+
+      // getHandle (not get) so a file without the truth products just skips
+      // the matching instead of throwing ProductNotFound.
+      auto const h_graph = iEvent.getHandle(graphToken_);
+      auto const h_hitIndex = iEvent.getHandle(hitIndexToken_);
+      if (!h_graph.isValid() || !h_hitIndex.isValid())
+        return;
+      truth::Graph const& graph = *h_graph;
+      truth::LogicalGraphHitIndex const& hitIndex = *h_hitIndex;
+
+      // Candidate truth branches: every muon in the graph (GEN and/or SIM).
+      std::vector<uint32_t> muonRoots;
+      for (uint32_t i = 0; i < graph.nParticles(); ++i) {
+        auto const& d = graph.particles()[i];
+        if (std::abs(d.pdgId) == 13 && !d.isSynthetic())
+          muonRoots.push_back(i);
+      }
+
+      using Assoc = truth::BranchHitAssociator;
+      const Assoc trkAssoc(hitIndex, muonRoots, Assoc::Metric::SharedHits, truth::HitChannel::Tracker, false); // Truth graph track-associator
+      const auto trkRootIds = rootDetIds(hitIndex, muonRoots, truth::HitChannel::Tracker);
+      const bool hasMuonChannel = hitIndex.hasChannel(truth::HitChannel::Muon); // Muon system
+      std::optional<Assoc> muAssoc;
+      if (hasMuonChannel)
+        muAssoc.emplace(hitIndex, muonRoots, Assoc::Metric::SharedHits, truth::HitChannel::Muon, false); // Truth graph muon-associator
+
+      int _nMuon = 0;
+      std::vector<truth::RecoHit> trkHits, muHits;
+      for(auto mu=h_offlineMuon->begin(); mu!=h_offlineMuon->end(); ++mu)
+      {
+        reco::TrackRef track = mu->muonBestTrack();
+        //reco::TrackRef track = mu->innerTrack();
+
+        // Split the track hits by subdetector. Needs the TrackExtra + rechits,
+        // i.e. RECO/FEVT content (AOD drops the muon/tracker rechits).
+        trkHits.clear();
+        muHits.clear();
+        if (track.isNonnull() && track->extra().isAvailable()) {
+          for (auto it = track->recHitsBegin(); it != track->recHitsEnd(); ++it) {
+            TrackingRecHit const& hit = **it;
+            if (!hit.isValid())
+              continue;
+            const DetId id = hit.geographicalId();
+            if (id.det() == DetId::Tracker)
+              trkHits.push_back(truth::RecoHit{id.rawId(), 1.f, 1.f});
+            else if (auto muId = muonHitDetId(hit))
+              muHits.push_back(truth::RecoHit{*muId, 1.f, 1.f});
+          }
+        }
+        
+        // auto trkMatch = bestMatch(trkAssoc, trkHits);
+        sortUnique(trkHits);
+        auto trkMatch = matchByDetIds(trkHits, muonRoots, trkRootIds, maxScore_);
+        std::optional<truth::BranchMatch> muMatch;
+        if (muAssoc)
+          muMatch = bestMatch(*muAssoc, muHits);
+
+        // Decision: tracker first (most hits, best purity), muon system as fallback
+        // (standalone muons, or tracks whose inner part is a fake).
+        if (trkMatch) {
+          muon_matchChannel_[_nMuon] = 0;
+          fillTruth(graph, trkMatch, static_cast<float>(trkHits.size()), _nMuon);
+        } else {
+          muon_matchChannel_[_nMuon] = muMatch ? 1 : -1;
+          fillTruth(graph, muMatch, static_cast<float>(muHits.size()), _nMuon);
+        }
+        muon_muSysSimId_[_nMuon] = muMatch ? static_cast<int>(muMatch->rootParticleId) : -1;
+        muon_muSysHitPurity_[_nMuon] =
+            (muMatch && !muHits.empty()) ? muMatch->sharedEnergy / static_cast<double>(muHits.size()) : 0.;
+
+        _nMuon++;
+      }  // loop over offline muons (truth)
+    }    // if (!isData)
+  }      // if offline muon collection available
 }
 
 void MuonHLTNtupler::Fill_HLT(const edm::Event &iEvent, bool isMYHLT)
@@ -800,6 +976,16 @@ void MuonHLTNtupler::Fill_GenericMuonCollections(const edm::Event &iEvent)
   //    the configured "triggerFilters" -- both were previously handled by
   //    hardcoded, per-collection blocks with no dR matching at all.
 
+  bool doOfflineMatching = true;
+  float minDR = 0.2;
+  edm::Handle< edm::View<reco::Muon> > h_offlineMuon;
+  iEvent.getByToken(t_offlineMuon_, h_offlineMuon);
+  if (h_offlineMuon->size()==0){
+    doOfflineMatching = false;
+
+    std::cout << "[WARNING] Empty offline muon collection, no matching available!" << std::endl;
+  }
+
   edm::Handle<trigger::TriggerEvent> h_triggerEvent;
   bool haveTriggerEvent = iEvent.getByToken(t_myTriggerEvent_, h_triggerEvent);
 
@@ -905,6 +1091,26 @@ void MuonHLTNtupler::Fill_GenericMuonCollections(const edm::Event &iEvent)
       }
       muonTrack_PathMatchedIdx_[cfg.name].push_back(matchedPathIdx);
       muonTrack_PathDR_[cfg.name].push_back(matchedPathDR);
+
+      if (doOfflineMatching){
+        // -- Match the generic collection to the offline muon object
+        //    store the index and deltaR
+        float muon_matchedDR = 999;
+        int muon_matchedIdx = -1;
+        float tmpDR;
+        int iMu = 0;
+        for(auto off_mu=h_offlineMuon->begin(); off_mu!=h_offlineMuon->end(); ++off_mu)
+        {
+          tmpDR = reco::deltaR(off_mu->eta(), off_mu->phi(), mu.eta, mu.phi);
+          if (tmpDR<muon_matchedDR && tmpDR<minDR){
+            muon_matchedDR = tmpDR;
+            muon_matchedIdx = iMu;
+          }
+          iMu++;
+        }
+        muonTrack_OfflineMatchedIdx_[cfg.name].push_back(muon_matchedIdx);
+        muonTrack_OfflineDR_[cfg.name].push_back(muon_matchedDR);
+      }
     }
   }
 }
@@ -963,7 +1169,91 @@ void MuonHLTNtupler::Fill_GenParticle(const edm::Event &iEvent)
   }
   nGenParticle_ = _nGenParticle;
 }
+std::optional<truth::BranchMatch> MuonHLTNtupler::bestMatch(truth::BranchHitAssociator const& assoc,
+                                                                    std::vector<truth::RecoHit>& hits) const {
+  if (hits.empty())
+    return std::nullopt;
+  sortUnique(hits);
+  auto matches = assoc.bestBranches(std::span<const truth::RecoHit>(hits), /*maxResults=*/1);
+  if (matches.empty() || matches.front().score > maxScore_)
+    return std::nullopt;
+  return matches.front();
+}
+void MuonHLTNtupler::fillTruth(truth::Graph const& graph,
+                               std::optional<truth::BranchMatch> const& m,
+                               float nRecoHits,
+                               int _nMuon) {
+  if (!m) {
+    muon_matched_[_nMuon] = 0;
+    muon_simId_[_nMuon] = -1;
+    muon_simPdgId_[_nMuon] = 0;
+    muon_simHasGen_[_nMuon] = 0;
+    muon_simMotherPdgId_[_nMuon] = 0;
+    muon_simPt_[_nMuon] = -1.f;
+    muon_simEta_[_nMuon] = -99.f;
+    muon_simPhi_[_nMuon] = -99.f;
+    muon_sharedHits_[_nMuon] = 0;
+    muon_hitPurity_[_nMuon] = 0.;
+    // v points to a whole int[arrSize_] array -> dereference before indexing
+    for (auto* v : {&muon_fromW_, &muon_fromZ_, &muon_fromTau_, &muon_fromLightHadron_, &muon_fromB_, &muon_fromC_, &muon_fromBSM_, &muon_isPrompt_})
+      (*v)[_nMuon] = 0;
+    return;
+  }
+ 
+  const truth::Particle p = graph.particle(m->rootParticleId);
+  const auto& p4 = p.momentum();
+ 
+  muon_matched_[_nMuon] = 1;
+  muon_simId_[_nMuon] = static_cast<int>(p.id());
+  muon_simPdgId_[_nMuon] = p.pdgId();
+  muon_simHasGen_[_nMuon] = p.hasGen();
+  muon_simPt_[_nMuon] = p4.pt();
+  muon_simEta_[_nMuon] = p4.eta();
+  muon_simPhi_[_nMuon] = p4.phi();
+  muon_sharedHits_[_nMuon] = static_cast<int>(std::lround(m->sharedEnergy));  // SharedHits metric: number of shared DetIds
+  muon_hitPurity_[_nMuon] = nRecoHits > 0 ? m->sharedEnergy / nRecoHits : 0.f;
+ 
+  // Mother: climb while the parent is the "same" particle (radiative copies).
+  int motherPdgId = 0;
+  truth::Particle cur = p;
+  for (int guard = 0; guard < 100; ++guard) {
+    const auto parents = cur.parents();
+    if (parents.empty())
+      break;
+    if (parents.front().pdgId() != cur.pdgId()) {
+      motherPdgId = parents.front().pdgId();
+      break;
+    }
+    cur = parents.front();
+  }
+  muon_simMotherPdgId_[_nMuon] = motherPdgId;
+ 
+  // Provenance from the full ancestry.
+  bool fromW = false, fromZ = false, fromTau = false, fromB = false, fromC = false, fromLightHadron = false, fromBSM = false;
+  for (auto const& a : p.ancestors()) {
 
+    const int id = std::abs(a.pdgId());
+    if (a.isRoot() && id == 2212) // Skip protons from collision
+      continue;
+
+    fromW |= (id == 24);
+    fromZ |= (id == 23);
+    fromTau |= (id == 15);
+    fromB |= hadronHasQuark(id, 5);
+    fromC |= hadronHasQuark(id, 4) && !hadronHasQuark(id, 5);
+    fromLightHadron |= (id > 100 && !hadronHasQuark(id, 5) && !hadronHasQuark(id, 4));
+    fromBSM |= ((id >= 32 && id <= 37) || (id >= 1000001 && id <= 1000039) || (id >= 2000001 && id <= 2000015)); // Zprime/Wprime/H+/etc. || SUSY
+  }
+  muon_fromW_[_nMuon] = fromW;
+  muon_fromZ_[_nMuon] = fromZ;
+  muon_fromTau_[_nMuon] = fromTau;
+  muon_fromLightHadron_[_nMuon] = fromLightHadron;
+  muon_fromB_[_nMuon] = fromB;
+  muon_fromC_[_nMuon] = fromC;
+  muon_fromBSM_[_nMuon] = fromBSM;
+  // Simple "prompt" definition: generator muon not from a hadron or a tau.
+  muon_isPrompt_[_nMuon] = p.hasGen() && !fromB && !fromC && !fromLightHadron && !fromTau;
+}
 
 // -- reference: https://github.com/cms-sw/cmssw/blob/master/DataFormats/MuonReco/src/MuonSelectors.cc#L910-L938
 bool MuonHLTNtupler::isNewHighPtMuon(const reco::Muon& muon, const reco::Vertex& vtx){

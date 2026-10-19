@@ -34,6 +34,7 @@
 #include "DataFormats/MuonReco/interface/Muon.h"
 #include "DataFormats/MuonReco/interface/MuonTrackLinks.h"
 #include "DataFormats/L1TMuonPhase2/interface/TrackerMuon.h"
+#include "DataFormats/L1TMuonPhase2/interface/SAMuon.h"
 #include "DataFormats/L1Trigger/interface/Muon.h"
 
 #include <memory>
@@ -207,6 +208,27 @@ inline std::vector<GenericMuon> MuonCollectionAdapter<l1t::TrackerMuonCollection
   return out;
 }
 
+// -- Phase-2 GMT standalone muons (l1tSAMuonsGmt:prompt / :displaced).
+//    SAMuon is an L1Candidate, so pt/eta/phi come from its p4. The
+//    LeafCandidate charge is not reliably set by the GMT producer, so
+//    decode it from the hardware bit using the same convention as
+//    TrackerMuon::phCharge() (hwCharge = 1 -> negative).
+template <>
+inline std::vector<GenericMuon> MuonCollectionAdapter<l1t::SAMuonCollection>::extract() const {
+  std::vector<GenericMuon> out;
+  out.reserve(handle_->size());
+  for (const auto& mu : *handle_) {
+    GenericMuon m;
+    m.pt  = mu.pt();
+    m.eta = mu.eta();
+    m.phi = mu.phi();
+    m.charge = mu.hwCharge() ? -1.f : +1.f;
+    m.trackPt = -99.f;  // standalone: no tracker track
+    out.push_back(m);
+  }
+  return out;
+}
+
 // -- Factory: turns the python-configured "type" string into the right
 //    adapter. This is the ONLY switch statement in the whole mechanism.
 inline std::unique_ptr<IMuonCollectionAdapter> makeMuonCollectionAdapter(const std::string& type,
@@ -224,6 +246,8 @@ inline std::unique_ptr<IMuonCollectionAdapter> makeMuonCollectionAdapter(const s
     return std::make_unique<MuonCollectionAdapter<std::vector<reco::Muon>>>(tag, std::move(cc));
   if (type == "L1TkMuon")
     return std::make_unique<MuonCollectionAdapter<l1t::TrackerMuonCollection>>(tag, std::move(cc));
+  if (type == "L1SAMuon")
+    return std::make_unique<MuonCollectionAdapter<l1t::SAMuonCollection>>(tag, std::move(cc));
   if (type == "MuonTrackLinks")
     return std::make_unique<MuonCollectionAdapter<std::vector<reco::MuonTrackLinks>>>(tag, std::move(cc));
 

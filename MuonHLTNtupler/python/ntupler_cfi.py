@@ -31,9 +31,12 @@ MYHLT = "MYHLT"
 #                            separate inner/outer/global tracks)
 #   L1TkMuon              -> l1t::TrackerMuonCollection
 # -----------------------------------------------------------------------
-muonCollections = cms.untracked.VPSet(
+muonCollections = cms.untracked.VPSet(    
     cms.PSet(name=cms.string("L1TkMuon"), type=cms.string("L1TkMuon"),
             label=cms.InputTag("l1tTkMuonsGmt", "", MYHLT)),
+
+    cms.PSet(name=cms.string("L1SAMuon"), type=cms.string("L1SAMuon"),
+             label=cms.InputTag("l1tSAMuonsGmt", "prompt", MYHLT)),
 
     cms.PSet(name=cms.string("L2Muon"), type=cms.string("TrackView"),
             label=cms.InputTag("hltL2MuonsFromL1TkMuon", "", MYHLT)),
@@ -84,6 +87,11 @@ ntuplerBase = cms.EDAnalyzer(
     offlineLumiScaler = cms.untracked.InputTag("scalersRawToDigi"),
     offlineVertex     = cms.untracked.InputTag("offlinePrimaryVertices"),
     offlineMuon       = cms.untracked.InputTag("muons"),
+
+    # -- Truth graph information 
+    truthGraph=cms.InputTag("truthLogicalGraphProducer"),
+    hitIndex=cms.InputTag("truthLogicalGraphHitIndexProducer"),
+    maxScore=cms.double(0.5),
 
     # -- objects from the HLT rerun (process name = "MYHLT" by default)
     myTriggerResults = cms.untracked.InputTag("TriggerResults",       "", MYHLT),

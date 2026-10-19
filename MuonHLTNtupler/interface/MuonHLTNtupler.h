@@ -114,12 +114,302 @@
 #include "MuonHLTTool/MuonHLTNtupler/interface/GenericMuonCollections.h"
 #include "MuonHLTTool/MuonHLTNtupler/interface/MuonHLTTriggerMatching.h"
 
+#include "DataFormats/DTRecHit/interface/DTRecHit1D.h"
+#include "DataFormats/DTRecHit/interface/DTRecHit1DPair.h"
+#include "DataFormats/DetId/interface/DetId.h"
+#include "DataFormats/MuonDetId/interface/MuonSubdetId.h"
+#include "DataFormats/MuonDetId/interface/CSCDetId.h"
+
+#include <algorithm>
+#include <cmath>
+#include <optional>
+#include <span>
+
+#include "SimDataFormats/TruthInfo/interface/Graph.h"
+#include "SimDataFormats/TruthInfo/interface/LogicalGraphHitIndex.h"
+#include "PhysicsTools/TruthInfo/interface/BranchHitAssociator.h"
+
+// -- muon segments (DT / CSC / GEM / ME0) and their geometry
+#include "DataFormats/DTRecHit/interface/DTRecSegment4DCollection.h"
+#include "DataFormats/CSCRecHit/interface/CSCSegmentCollection.h"
+#include "DataFormats/GEMRecHit/interface/GEMSegmentCollection.h"
+#include "DataFormats/GEMRecHit/interface/ME0SegmentCollection.h"
+#include "Geometry/Records/interface/MuonGeometryRecord.h"
+#include "Geometry/DTGeometry/interface/DTGeometry.h"
+#include "Geometry/CSCGeometry/interface/CSCGeometry.h"
+#include "Geometry/GEMGeometry/interface/GEMGeometry.h"
+#include "Geometry/GEMGeometry/interface/ME0Geometry.h"
+// -- muon rechits (DT / CSC / RPC / GEM / ME0)
+#include "DataFormats/DTRecHit/interface/DTRecHitCollection.h"
+#include "DataFormats/CSCRecHit/interface/CSCRecHit2DCollection.h"
+#include "DataFormats/RPCRecHit/interface/RPCRecHitCollection.h"
+#include "DataFormats/GEMRecHit/interface/GEMRecHitCollection.h"
+#include "DataFormats/GEMRecHit/interface/ME0RecHitCollection.h"
+#include "Geometry/RPCGeometry/interface/RPCGeometry.h"
+#include "DataFormats/GeometryVector/interface/GlobalPoint.h"
+#include "DataFormats/GeometryVector/interface/GlobalVector.h"
+
 #include "TTree.h"
 #include "TString.h"
 
 using namespace std;
 using namespace reco;
 using namespace edm;
+
+namespace {
+  // DetId -> [(particle id, sim energy)] of every particle with a DIRECT hit in
+  // the Muon channel. Direct (not subgraph) hits, so a cell belongs to the
+  // particle that actually crossed it: the delta ray, not the muon above it.
+  using CellMap = std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, float>>>;
+ 
+  CellMap buildMuonCellMap(truth::LogicalGraphHitIndex const& idx) {
+    CellMap cells;
+    if (!idx.hasChannel(truth::HitChannel::Muon))
+      return cells;
+    for (uint32_t p = 0; p < idx.nParticles(); ++p)
+      for (auto const& h : idx.directHits(truth::HitChannel::Muon, p))
+        cells[h.detId].emplace_back(p, h.energy);
+    // One entry per (cell, particle): a particle crossing a cell twice votes once.
+    for (auto& [detId, v] : cells) {
+      std::sort(v.begin(), v.end());
+      std::size_t w = 0;
+      for (std::size_t r = 0; r < v.size(); ++r) {
+        if (w > 0 && v[w - 1].first == v[r].first)
+          v[w - 1].second += v[r].second;
+        else
+          v[w++] = v[r];
+      }
+      v.resize(w);
+    }
+    return cells;
+  }
+
+  // First copy of a same-pdgId chain (GEN radiative copies, GEN->SIM): the
+  // common key for "the same physical muon" on the segment and offline side.
+  uint32_t chainHead(truth::Graph const& g, uint32_t id) {
+    uint32_t cur = id;
+    for (int guard = 0; guard < 200; ++guard) {
+      const truth::Particle p = g.particle(cur);
+      bool moved = false;
+      for (auto const& par : p.parents()) {
+        if (par.pdgId() == p.pdgId()) {
+          cur = par.id();
+          moved = true;
+          break;
+        }
+      }
+      if (!moved)
+        break;
+    }
+    return cur;
+  }
+
+  truth::VertexReason productionReason(truth::Particle const& p) {
+    const auto pv = p.productionVertices();
+    return pv.empty() ? truth::VertexReason::Unknown : pv.front().data().vertexReason();
+  }
+
+  int originFromReason(truth::VertexReason r) {
+    using R = truth::VertexReason;
+    switch (r) {
+      case R::Ionisation:
+        return 2;  // delta ray
+      case R::Bremsstrahlung:
+        return 3;  // brems photon (and whatever it converts into)
+      case R::Decay:
+        return 5;  // mu -> e nu nu in flight
+      case R::HadronInelastic:
+      case R::HadronElastic:
+      case R::NuclearCapture:
+      case R::ChargeExchange:
+      case R::HadronAtRest:
+        return 6;  // muon-nuclear
+      default:
+        return 4;  // pair production (G4 muPairProd -> Other), Compton, ...
+    }
+  }
+
+  // Majority vote of the segment's hit DetIds over the cell map, then walk up
+  // the graph to classify the winner and find its muon.
+  MuonHLTNtupler::SegTruth classifySegment(truth::Graph const& g,
+                                           CellMap const& cells,
+                                           std::vector<uint32_t> detIds,
+                                           std::vector<int> const& offlineHeads) {
+    MuonHLTNtupler::SegTruth t;
+    std::sort(detIds.begin(), detIds.end());
+    detIds.erase(std::unique(detIds.begin(), detIds.end()), detIds.end());
+    if (detIds.empty())
+      return t;
+ 
+    std::unordered_map<uint32_t, std::pair<int, float>> votes;  // particle -> (nHits, energy)
+    for (const uint32_t id : detIds) {
+      auto it = cells.find(id);
+      if (it == cells.end())
+        continue;
+      for (auto const& [p, e] : it->second) {
+        votes[p].first += 1;
+        votes[p].second += e;
+      }
+    }
+    if (votes.empty())
+      return t;  // origin 0: noise, or a hit/DetId convention not in the index
+ 
+    uint32_t best = 0;
+    std::pair<int, float> bestV{-1, 0.f};
+    for (auto const& [p, v] : votes)
+      if (v.first > bestV.first || (v.first == bestV.first && v.second > bestV.second)) {
+        best = p;
+        bestV = v;
+      }
+ 
+    const truth::Particle p = g.particle(best);
+    t.truthId = static_cast<int>(best);
+    t.truthPdgId = p.pdgId();
+    t.nTruthHits = bestV.first;
+    t.purity = static_cast<float>(bestV.first) / static_cast<float>(detIds.size());
+    t.nCandidates = static_cast<int>(votes.size());
+ 
+    // Find the muon: the particle itself, or its closest muon ancestor.
+    int muonId = -1;
+    if (std::abs(p.pdgId()) == 13) {
+      muonId = static_cast<int>(best);
+      t.origin = 1;
+    } else {
+      truth::Particle cur = p;  // ends as the first-generation secondary of the muon
+      for (int guard = 0; guard < 200 && muonId < 0; ++guard) {
+        const auto parents = cur.parents();
+        if (parents.empty())
+          break;
+        truth::Particle up = parents.front();
+        for (auto const& q : parents)
+          if (std::abs(q.pdgId()) == 13) {
+            up = q;
+            break;
+          }
+        if (std::abs(up.pdgId()) == 13)
+          muonId = static_cast<int>(up.id());
+        else
+          cur = up;
+      }
+      const truth::VertexReason r = productionReason(muonId >= 0 ? cur : p);
+      t.originReason = static_cast<int>(r);
+      t.origin = muonId >= 0 ? originFromReason(r) : 7;
+    }
+ 
+    if (muonId >= 0) {
+      const uint32_t head = chainHead(g, static_cast<uint32_t>(muonId));
+      const truth::Particle h = g.particle(head);
+      t.muonHeadId = static_cast<int>(head);
+      if (t.origin == 1)
+        t.originReason = static_cast<int>(productionReason(h));  // Decay => pi/K decay in flight
+      if (h.hasGen()) {
+        t.genMuonId = static_cast<int>(head);
+        t.genMuonPt = h.momentum().pt();
+        t.genMuonEta = h.momentum().eta();
+        t.genMuonPhi = h.momentum().phi();
+      }
+      for (std::size_t i = 0; i < offlineHeads.size(); ++i)
+        if (offlineHeads[i] == t.muonHeadId) {
+          t.offlineMuonIdx = static_cast<int>(i);
+          break;
+        }
+    }
+    return t;
+  }
+
+  // Key identifying one rechit inside its DetId, used to find the segment a
+  // rechit belongs to (segments store copies of their component rechits).
+  inline uint64_t hitKey(uint32_t detId, int a, int b = 0) {
+    return (static_cast<uint64_t>(detId) << 32) ^ (static_cast<uint32_t>(a) * 4099u + static_cast<uint32_t>(b));
+  }
+
+  // Ordinary hadron containing quark `flavor` (5 = b, 4 = c).
+  inline bool hadronHasQuark(int pdgId, int flavor) {
+    const int id = std::abs(pdgId);
+    if (id < 100 || id >= 1000000000)
+      return false;
+    return (id / 1000) % 10 == flavor || (id / 100) % 10 == flavor || (id / 10) % 10 == flavor;
+  }
+ 
+  // Bring a muon-system reco hit into the DetId space of the stored PSimHit
+  // detUnitId(), so the shared-DetId match works.
+  //   DT : PSimHits are stored per WIRE (DTWireId); DTRecHit1D lives on the
+  //        layer but remembers its wire -> use wireId().
+  //   CSC: sim hits of the whole ME1/1 chamber are ring 1, while ME1/1a reco
+  //        hits are ring 4 -> fold ring 4 into ring 1.
+  //   RPC/GEM: roll / eta-partition on both sides already.
+  inline std::optional<uint32_t> muonHitDetId(TrackingRecHit const& hit) {
+    const DetId id = hit.geographicalId();
+    if (id.det() != DetId::Muon)
+      return std::nullopt;
+    switch (id.subdetId()) {
+      case MuonSubdetId::DT:
+        if (auto const* h = dynamic_cast<DTRecHit1D const*>(&hit))
+          return h->wireId().rawId();
+        if (auto const* h = dynamic_cast<DTRecHit1DPair const*>(&hit))
+          return h->wireId().rawId();
+        return std::nullopt;  // DT segments (4D/2D) have no single wire: skip
+      case MuonSubdetId::CSC: {
+        CSCDetId cscId(id);
+        if (cscId.station() == 1 && cscId.ring() == 4)
+          cscId = CSCDetId(cscId.endcap(), 1, 1, cscId.chamber(), cscId.layer());
+        return cscId.rawId();
+      }
+      default:
+        return id.rawId();
+    }
+  }
+  inline void sortUnique(std::vector<truth::RecoHit>& hits) {
+    std::sort(hits.begin(), hits.end(), [](auto const& a, auto const& b) { return a.detId < b.detId; });
+    hits.erase(std::unique(hits.begin(), hits.end(), [](auto const& a, auto const& b) { return a.detId == b.detId; }),
+               hits.end());
+  }
+  // Sorted, unique tracker-channel DetIds of each candidate root's subgraph.
+  inline std::vector<std::vector<uint32_t>> rootDetIds(truth::LogicalGraphHitIndex const& idx,
+                                                       std::vector<uint32_t> const& roots,
+                                                       truth::HitChannel ch) {
+    std::vector<std::vector<uint32_t>> out(roots.size());
+    std::vector<truth::LogicalGraphHitIndex::Hit> tmp;
+    for (std::size_t r = 0; r < roots.size(); ++r) {
+      tmp.clear();
+      idx.appendSubgraphHits(ch, roots[r], tmp);
+      auto& ids = out[r];
+      ids.reserve(tmp.size());
+      for (auto const& h : tmp) ids.push_back(h.detId);
+      std::sort(ids.begin(), ids.end());
+      ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    }
+    return out;
+  }
+
+  // Best root by number of shared DetIds; recoHits must be sorted+unique.
+  // Same convention as BranchHitAssociator's SharedHits metric.
+  inline std::optional<truth::BranchMatch> matchByDetIds(std::vector<truth::RecoHit> const& recoHits,
+                                                         std::vector<uint32_t> const& roots,
+                                                         std::vector<std::vector<uint32_t>> const& rootIds,
+                                                         double maxScore) {
+    if (recoHits.empty()) return std::nullopt;
+    std::optional<truth::BranchMatch> best;
+    for (std::size_t r = 0; r < roots.size(); ++r) {
+      auto const& ids = rootIds[r];
+      uint32_t shared = 0;
+      for (auto const& h : recoHits)
+        shared += std::binary_search(ids.begin(), ids.end(), h.detId);
+      if (shared == 0) continue;
+      const float score = 1.f - float(shared) / float(recoHits.size());
+      if (!best || score < best->score || (score == best->score && shared > best->sharedEnergy)) {
+        truth::BranchMatch m;
+        m.rootParticleId = roots[r];
+        m.sharedEnergy = float(shared);
+        m.score = score;
+        m.reverseScore = ids.empty() ? 1.f : 1.f - float(shared) / float(ids.size());
+        best = m;
+      }
+    }
+    if (best && best->score > maxScore) return std::nullopt;
+    return best;
+  }
+}  // namespace
 
 class MuonHLTNtupler : public edm::one::EDAnalyzer<edm::one::WatchRuns>
 {
@@ -137,9 +427,13 @@ private:
   void Init();
   void Make_Branch();
   void Fill_HLT(const edm::Event &iEvent, bool isMYHLT);
-  void Fill_Muon(const edm::Event &iEvent);
+  void Fill_Muon(const edm::Event &iEvent, bool isData);
   void Fill_GenericMuonCollections(const edm::Event &iEvent);
   void Fill_GenParticle(const edm::Event &iEvent);
+  void Fill_MuonSystem(const edm::Event &iEvent, const edm::EventSetup &iSetup, bool isData);
+
+  std::optional<truth::BranchMatch> bestMatch(truth::BranchHitAssociator const&, std::vector<truth::RecoHit>&) const;
+  void fillTruth(truth::Graph const&, std::optional<truth::BranchMatch> const&, float nRecoHits, int _nMuon);
   
   bool SavedTriggerCondition( std::string& pathName );
   bool SavedFilterCondition( std::string& filterName );
@@ -157,6 +451,30 @@ private:
   edm::EDGetTokenT< trigger::TriggerEvent >                  t_triggerEvent_;
   edm::EDGetTokenT< edm::TriggerResults >                    t_myTriggerResults_;
   edm::EDGetTokenT< trigger::TriggerEvent >                  t_myTriggerEvent_;
+
+  // Truth-Graph
+  edm::EDGetTokenT<truth::Graph>                             graphToken_;
+  edm::EDGetTokenT<truth::LogicalGraphHitIndex>              hitIndexToken_;
+  const double maxScore_;
+
+  // Muon segments
+  edm::EDGetTokenT<DTRecSegment4DCollection>                 t_dtSegments_;
+  edm::EDGetTokenT<CSCSegmentCollection>                     t_cscSegments_;
+  edm::EDGetTokenT<GEMSegmentCollection>                     t_gemSegments_;
+  edm::EDGetTokenT<ME0SegmentCollection>                     t_me0Segments_;
+  const bool runME0_;  // legacy ME0 path; in recent Phase-2 geometries ME0 = GE0 (GEM station 0)
+  const edm::ESGetToken<DTGeometry,  MuonGeometryRecord>     dtGeomToken_;
+  const edm::ESGetToken<CSCGeometry, MuonGeometryRecord>     cscGeomToken_;
+  const edm::ESGetToken<GEMGeometry, MuonGeometryRecord>     gemGeomToken_;
+  edm::ESGetToken<ME0Geometry, MuonGeometryRecord>           me0GeomToken_;  // only consumed if runME0_
+
+  // Muon rechits
+  edm::EDGetTokenT<DTRecHitCollection>                       t_dtRecHits_;
+  edm::EDGetTokenT<CSCRecHit2DCollection>                    t_cscRecHits_;
+  edm::EDGetTokenT<RPCRecHitCollection>                      t_rpcRecHits_;
+  edm::EDGetTokenT<GEMRecHitCollection>                      t_gemRecHits_;
+  edm::EDGetTokenT<ME0RecHitCollection>                      t_me0RecHits_;   // only read if runME0_
+  const edm::ESGetToken<RPCGeometry, MuonGeometryRecord>     rpcGeomToken_;
  
   // -- L2Muon, L3Muon, TkMuon, iterL3OI, iterL3IOFromL2, iterL3FromL2 used
   //    to each have a dedicated token + dedicated Fill_* code here. They are
@@ -215,6 +533,9 @@ private:
   //    triggerPathsCfg_/"configuredTriggerPaths", same ordering.
   std::map<std::string, std::vector<std::vector<int>>>   muonTrack_PathMatchedIdx_;
   std::map<std::string, std::vector<std::vector<float>>> muonTrack_PathDR_;
+
+  std::map<std::string, std::vector<int>>   muonTrack_OfflineMatchedIdx_;
+  std::map<std::string, std::vector<float>> muonTrack_OfflineDR_;
 
   edm::EDGetTokenT< reco::VertexCollection >                 t_hltIterL3MuonTrimmedPixelVertices_;
   edm::EDGetTokenT< reco::VertexCollection >                 t_hltIterL3FromL1MuonTrimmedPixelVertices_;
@@ -377,6 +698,187 @@ private:
   int muon_stationMask_[arrSize_];
   int muon_expectedNnumberOfMatchedStations_[arrSize_];
 
+  int muon_matchChannel_[arrSize_];
+  int muon_muSysSimId_[arrSize_];
+  double muon_muSysHitPurity_[arrSize_];
+  int muon_matched_[arrSize_];
+  int muon_simId_[arrSize_];
+  int muon_simPdgId_[arrSize_];
+  int muon_simHasGen_[arrSize_];
+  int muon_simMotherPdgId_[arrSize_];
+  double muon_simPt_[arrSize_];
+  double muon_simEta_[arrSize_];
+  double muon_simPhi_[arrSize_];
+  int muon_sharedHits_[arrSize_];
+  double muon_hitPurity_[arrSize_];
+  int muon_fromW_[arrSize_]; 
+  int muon_fromZ_[arrSize_];
+  int muon_fromTau_[arrSize_];
+  int muon_fromLightHadron_[arrSize_];
+  int muon_fromB_[arrSize_];
+  int muon_fromC_[arrSize_];
+  int muon_fromBSM_[arrSize_];
+  int muon_isPrompt_[arrSize_];
+  int muon_truthHead_[arrSize_];
+
+public:
+  // ---------------------------------------------------------------------------
+  // Truth result for one segment (filled by classifySegment in the .cc)
+  //   origin:  0 no truth match          1 the muon itself
+  //            2 muon delta ray (ionisation)  3 muon bremsstrahlung
+  //            4 other EM process of the muon (pair production, ...)
+  //            5 muon decay in flight      6 muon nuclear interaction
+  //            7 not from a muon (punch-through, neutrons, ...)
+  //   originReason: truth::VertexReason of the process behind `origin`
+  //            (for origin 1: production of the muon chain head, e.g. Decay
+  //            for a pi/K decay-in-flight muon; for 2-6: production of the
+  //            first-generation secondary of the muon; for 7: production of
+  //            the depositing particle).
+  // ---------------------------------------------------------------------------
+  struct SegTruth {
+    int   truthId = -1, truthPdgId = 0, nTruthHits = 0;
+    float purity = 0.f;
+    int   origin = 0, originReason = 0;
+    int   muonHeadId = -1, genMuonId = -1, offlineMuonIdx = -1;
+    int   nCandidates = 0;  // distinct truth particles sharing the matched cells (>1 = ambiguous)
+    float genMuonPt = -999.f, genMuonEta = -999.f, genMuonPhi = -999.f;
+  };
+
+private:
+  // -- one instance per segment type; branches are <prefix>_<field>, counter n<Prefix>
+  class segTemplate {
+  public:
+    std::vector<float> x, y, z, dx, dy, dz, eta, phi, chi2;
+    std::vector<int>   ndof, nHits, region, station, ring, chamber;
+    std::vector<int>   truthId, truthPdgId, nTruthHits, origin, originReason;
+    std::vector<int>   muonHeadId, genMuonId, offlineMuonIdx, nCandidates;
+    std::vector<float> purity, genMuonPt, genMuonEta, genMuonPhi;
+    int n = 0;
+ 
+    void clear() {
+      n = 0;
+      for (auto* v : {&x, &y, &z, &dx, &dy, &dz, &eta, &phi, &chi2, &purity, &genMuonPt, &genMuonEta, &genMuonPhi})
+        v->clear();
+      for (auto* v : {&ndof, &nHits, &region, &station, &ring, &chamber, &truthId, &truthPdgId, &nTruthHits,
+                      &origin, &originReason, &muonHeadId, &genMuonId, &offlineMuonIdx, &nCandidates})
+        v->clear();
+    }
+ 
+    void setBranch(TTree* t, const TString& p, const TString& counter) {
+      t->Branch(counter, &n);
+      t->Branch(p + "_nCandidates", &nCandidates);
+      t->Branch(p + "_x", &x);           t->Branch(p + "_y", &y);           t->Branch(p + "_z", &z);
+      t->Branch(p + "_dx", &dx);         t->Branch(p + "_dy", &dy);         t->Branch(p + "_dz", &dz);
+      t->Branch(p + "_eta", &eta);       t->Branch(p + "_phi", &phi);
+      t->Branch(p + "_chi2", &chi2);     t->Branch(p + "_ndof", &ndof);     t->Branch(p + "_nHits", &nHits);
+      t->Branch(p + "_region", &region); t->Branch(p + "_station", &station);
+      t->Branch(p + "_ring", &ring);     t->Branch(p + "_chamber", &chamber);
+      t->Branch(p + "_truthId", &truthId);           t->Branch(p + "_truthPdgId", &truthPdgId);
+      t->Branch(p + "_nTruthHits", &nTruthHits);     t->Branch(p + "_purity", &purity);
+      t->Branch(p + "_origin", &origin);             t->Branch(p + "_originReason", &originReason);
+      t->Branch(p + "_muonHeadId", &muonHeadId);     t->Branch(p + "_genMuonId", &genMuonId);
+      t->Branch(p + "_genMuonPt", &genMuonPt);       t->Branch(p + "_genMuonEta", &genMuonEta);
+      t->Branch(p + "_genMuonPhi", &genMuonPhi);     t->Branch(p + "_offlineMuonIdx", &offlineMuonIdx);
+    }
+
+    // region/station/ring/chamber are the detector's own indices:
+    //   DT : region = 0,       ring = wheel,  chamber = sector
+    //   CSC: region = endcap (1 = +z, 2 = -z)
+    //   GEM/ME0: region = +-1
+    void fill(const GlobalPoint& gp, const GlobalVector& gv, float c2, int nd, int nh,
+              int reg, int st, int rg, int ch, const SegTruth& t) {
+      x.push_back(gp.x());   y.push_back(gp.y());   z.push_back(gp.z());
+      dx.push_back(gv.x());  dy.push_back(gv.y());  dz.push_back(gv.z());
+      eta.push_back(gp.eta()); phi.push_back(gp.phi());
+      chi2.push_back(c2); ndof.push_back(nd); nHits.push_back(nh);
+      region.push_back(reg); station.push_back(st); ring.push_back(rg); chamber.push_back(ch);
+      truthId.push_back(t.truthId);       truthPdgId.push_back(t.truthPdgId);
+      nTruthHits.push_back(t.nTruthHits); purity.push_back(t.purity);
+      origin.push_back(t.origin);         originReason.push_back(t.originReason);
+      muonHeadId.push_back(t.muonHeadId); genMuonId.push_back(t.genMuonId);
+      genMuonPt.push_back(t.genMuonPt);   genMuonEta.push_back(t.genMuonEta); genMuonPhi.push_back(t.genMuonPhi);
+      offlineMuonIdx.push_back(t.offlineMuonIdx);
+      nCandidates.push_back(t.nCandidates);
+      ++n;
+    }
+  };
+
+  segTemplate dtSegs_, cscSegs_, gemSegs_, me0Segs_;
+  std::vector<int> dtSeg_nHitsPhi_, dtSeg_nHitsZ_;  // DT-specific
+
+  // -- one instance per rechit type; branches are <prefix>_<field>, counter n<Prefix>
+  //    region/station/ring/sector/layer/roll are the detector's own indices:
+  //      DT : region 0, ring = wheel, sector, layer = 4*(superlayer-1)+layer (1..12), roll = superlayer
+  //      CSC: region = endcap, ring, sector = chamber, layer, roll = 0
+  //      RPC: region (0 barrel, +-1 endcap), ring (= wheel in barrel), station, sector, layer, roll
+  //      GEM/ME0: region, ring, sector = chamber, layer, roll = eta partition
+  //    channel/clusterSize: DT wire / 1, CSC first strip / nStrips (wireGroup in `wire`),
+  //                         RPC & GEM first strip / cluster size, ME0 -1 / -1
+  //    time: DT digi time, CSC tpeak, RPC time, GEM bunch crossing, ME0 tof
+  //    segIdx: index into the matching <det>Seg_* arrays of the segment that
+  //            uses this hit (-1 if none; RPC has no segments)
+  class rhTemplate {
+  public:
+    std::vector<float> x, y, z, eta, phi, time;
+    std::vector<int>   region, station, ring, sector, layer, roll, channel, clusterSize, wire, segIdx;
+    std::vector<int>   truthId, truthPdgId, nCandidates, origin, originReason;
+    std::vector<int>   muonHeadId, genMuonId, offlineMuonIdx;
+    int n = 0;
+ 
+    void clear() {
+      n = 0;
+      for (auto* v : {&x, &y, &z, &eta, &phi, &time})
+        v->clear();
+      for (auto* v : {&region, &station, &ring, &sector, &layer, &roll, &channel, &clusterSize, &wire, &segIdx,
+                      &truthId, &truthPdgId, &nCandidates, &origin, &originReason, &muonHeadId, &genMuonId,
+                      &offlineMuonIdx})
+        v->clear();
+    }
+ 
+    void setBranch(TTree* t, const TString& p, const TString& counter) {
+      t->Branch(counter, &n);
+      t->Branch(p + "_x", &x);     t->Branch(p + "_y", &y);       t->Branch(p + "_z", &z);
+      t->Branch(p + "_eta", &eta); t->Branch(p + "_phi", &phi);   t->Branch(p + "_time", &time);
+      t->Branch(p + "_region", &region);   t->Branch(p + "_station", &station); t->Branch(p + "_ring", &ring);
+      t->Branch(p + "_sector", &sector);   t->Branch(p + "_layer", &layer);     t->Branch(p + "_roll", &roll);
+      t->Branch(p + "_channel", &channel); t->Branch(p + "_clusterSize", &clusterSize);
+      t->Branch(p + "_wire", &wire);       t->Branch(p + "_segIdx", &segIdx);
+      t->Branch(p + "_truthId", &truthId);         t->Branch(p + "_truthPdgId", &truthPdgId);
+      t->Branch(p + "_nCandidates", &nCandidates); t->Branch(p + "_origin", &origin);
+      t->Branch(p + "_originReason", &originReason);
+      t->Branch(p + "_muonHeadId", &muonHeadId);   t->Branch(p + "_genMuonId", &genMuonId);
+      t->Branch(p + "_offlineMuonIdx", &offlineMuonIdx);
+    }
+ 
+    struct Ids {
+      int region = 0, station = 0, ring = 0, sector = 0, layer = 0, roll = 0;
+      int channel = -1, clusterSize = -1, wire = -1;
+    };
+
+    void fill(const GlobalPoint& gp, float t, const Ids& id, int seg, const SegTruth& tr) {
+      x.push_back(gp.x()); y.push_back(gp.y()); z.push_back(gp.z());
+      eta.push_back(gp.eta()); phi.push_back(gp.phi()); time.push_back(t);
+      region.push_back(id.region); station.push_back(id.station); ring.push_back(id.ring);
+      sector.push_back(id.sector); layer.push_back(id.layer);     roll.push_back(id.roll);
+      channel.push_back(id.channel); clusterSize.push_back(id.clusterSize); wire.push_back(id.wire);
+      segIdx.push_back(seg);
+      truthId.push_back(tr.truthId);         truthPdgId.push_back(tr.truthPdgId);
+      nCandidates.push_back(tr.nCandidates); origin.push_back(tr.origin);
+      originReason.push_back(tr.originReason);
+      muonHeadId.push_back(tr.muonHeadId);   genMuonId.push_back(tr.genMuonId);
+      offlineMuonIdx.push_back(tr.offlineMuonIdx);
+      ++n;
+    }
+  };
+
+  rhTemplate dtRecHits_, cscRecHits_, rpcRecHits_, gemRecHits_, me0RecHits_;
+  std::vector<float> dtRh_xLeft_, dtRh_xRight_;  // DT-specific: local x of the two L/R solutions (layer frame)
+
+
+
+
+
+
   class vtxTemplate {
   private:
     int nVtxs;
@@ -391,6 +893,7 @@ private:
     std::vector<double> vtxZ;
     std::vector<double> vtxZerr;
   public:
+
     void clear() {
       nVtxs = 0;
       isValid.clear();

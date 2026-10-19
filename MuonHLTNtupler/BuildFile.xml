@@ -36,6 +36,10 @@
 <use name="TrackingTools/TrackAssociator"/>
 <use name="RecoTracker/TkDetLayers"/>
 <use name="CommonTools/MVAUtils"/>
+<use name="SimDataFormats/TruthInfo"/>
+<use name="PhysicsTools/TruthInfo"/>
+<use name="DataFormats/MuonDetId"/>
+<use name="DataFormats/DTRecHit"/>
 <!-- <use name="HLTrigger/MuonHLTSeedMVAClassifierPhase2"/> -->
 <use name="RecoMuon/TrackerSeedGenerator"/>
 <use name="L1Trigger/L1TMuon"/>
