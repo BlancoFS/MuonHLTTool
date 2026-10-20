@@ -73,6 +73,174 @@ using namespace std;
 using namespace reco;
 using namespace edm;
 
+namespace {
+  
+  // DetId -> [(particle id, sim energy)] of every particle with a DIRECT hit in
+  // the Muon channel. Direct (not subgraph) hits, so a cell belongs to the
+  // particle that actually crossed it: the delta ray, not the muon above it.
+  using CellMap = std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, float>>>;
+ 
+  CellMap buildMuonCellMap(truth::LogicalGraphHitIndex const& idx) {
+    CellMap cells;
+    if (!idx.hasChannel(truth::HitChannel::Muon))
+      return cells;
+    for (uint32_t p = 0; p < idx.nParticles(); ++p)
+      for (auto const& h : idx.directHits(truth::HitChannel::Muon, p))
+        cells[h.detId].emplace_back(p, h.energy);
+    // One entry per (cell, particle): a particle crossing a cell twice votes once.
+    for (auto& [detId, v] : cells) {
+      std::sort(v.begin(), v.end());
+      std::size_t w = 0;
+      for (std::size_t r = 0; r < v.size(); ++r) {
+        if (w > 0 && v[w - 1].first == v[r].first)
+          v[w - 1].second += v[r].second;
+        else
+          v[w++] = v[r];
+      }
+      v.resize(w);
+    }
+    return cells;
+  }
+
+  // First copy of a same-pdgId chain (GEN radiative copies, GEN->SIM): the
+  // common key for "the same physical muon" on the segment and offline side.
+  uint32_t chainHead(truth::Graph const& g, uint32_t id) {
+    uint32_t cur = id;
+    for (int guard = 0; guard < 200; ++guard) {
+      const truth::Particle p = g.particle(cur);
+      bool moved = false;
+      for (auto const& par : p.parents()) {
+        if (par.pdgId() == p.pdgId()) {
+          cur = par.id();
+          moved = true;
+          break;
+        }
+      }
+      if (!moved)
+        break;
+    }
+    return cur;
+  }
+
+  truth::VertexReason productionReason(truth::Particle const& p) {
+    const auto pv = p.productionVertices();
+    return pv.empty() ? truth::VertexReason::Unknown : pv.front().data().vertexReason();
+  }
+
+  int originFromReason(truth::VertexReason r) {
+    using R = truth::VertexReason;
+    switch (r) {
+      case R::Ionisation:
+        return 2;  // delta ray
+      case R::Bremsstrahlung:
+        return 3;  // brems photon (and whatever it converts into)
+      case R::Decay:
+        return 5;  // mu -> e nu nu in flight
+      case R::HadronInelastic:
+      case R::HadronElastic:
+      case R::NuclearCapture:
+      case R::ChargeExchange:
+      case R::HadronAtRest:
+        return 6;  // muon-nuclear
+      default:
+        return 4;  // pair production (G4 muPairProd -> Other), Compton, ...
+    }
+  }
+
+  // Majority vote of the segment's hit DetIds over the cell map, then walk up
+  // the graph to classify the winner and find its muon.
+  MuonHLTNtupler::SegTruth classifySegment(truth::Graph const& g,
+                                           CellMap const& cells,
+                                           std::vector<uint32_t> detIds,
+                                           std::vector<int> const& offlineHeads) {
+    MuonHLTNtupler::SegTruth t;
+    std::sort(detIds.begin(), detIds.end());
+    detIds.erase(std::unique(detIds.begin(), detIds.end()), detIds.end());
+    if (detIds.empty())
+      return t;
+ 
+    std::unordered_map<uint32_t, std::pair<int, float>> votes;  // particle -> (nHits, energy)
+    for (const uint32_t id : detIds) {
+      auto it = cells.find(id);
+      if (it == cells.end())
+        continue;
+      for (auto const& [p, e] : it->second) {
+        votes[p].first += 1;
+        votes[p].second += e;
+      }
+    }
+    if (votes.empty())
+      return t;  // origin 0: noise, or a hit/DetId convention not in the index
+ 
+    uint32_t best = 0;
+    std::pair<int, float> bestV{-1, 0.f};
+    for (auto const& [p, v] : votes)
+      if (v.first > bestV.first || (v.first == bestV.first && v.second > bestV.second)) {
+        best = p;
+        bestV = v;
+      }
+ 
+    const truth::Particle p = g.particle(best);
+    t.truthId = static_cast<int>(best);
+    t.truthPdgId = p.pdgId();
+    t.nTruthHits = bestV.first;
+    t.purity = static_cast<float>(bestV.first) / static_cast<float>(detIds.size());
+    t.nCandidates = static_cast<int>(votes.size());
+ 
+    // Find the muon: the particle itself, or its closest muon ancestor.
+    int muonId = -1;
+    if (std::abs(p.pdgId()) == 13) {
+      muonId = static_cast<int>(best);
+      t.origin = 1;
+    } else {
+      truth::Particle cur = p;  // ends as the first-generation secondary of the muon
+      for (int guard = 0; guard < 200 && muonId < 0; ++guard) {
+        const auto parents = cur.parents();
+        if (parents.empty())
+          break;
+        truth::Particle up = parents.front();
+        for (auto const& q : parents)
+          if (std::abs(q.pdgId()) == 13) {
+            up = q;
+            break;
+          }
+        if (std::abs(up.pdgId()) == 13)
+          muonId = static_cast<int>(up.id());
+        else
+          cur = up;
+      }
+      const truth::VertexReason r = productionReason(muonId >= 0 ? cur : p);
+      t.originReason = static_cast<int>(r);
+      t.origin = muonId >= 0 ? originFromReason(r) : 7;
+    }
+ 
+    if (muonId >= 0) {
+      const uint32_t head = chainHead(g, static_cast<uint32_t>(muonId));
+      const truth::Particle h = g.particle(head);
+      t.muonHeadId = static_cast<int>(head);
+      if (t.origin == 1)
+        t.originReason = static_cast<int>(productionReason(h));  // Decay => pi/K decay in flight
+      if (h.hasGen()) {
+        t.genMuonId = static_cast<int>(head);
+        t.genMuonPt = h.momentum().pt();
+        t.genMuonEta = h.momentum().eta();
+        t.genMuonPhi = h.momentum().phi();
+      }
+      for (std::size_t i = 0; i < offlineHeads.size(); ++i)
+        if (offlineHeads[i] == t.muonHeadId) {
+          t.offlineMuonIdx = static_cast<int>(i);
+          break;
+        }
+    }
+    return t;
+  }
+
+  // Key identifying one rechit inside its DetId, used to find the segment a
+  // rechit belongs to (segments store copies of their component rechits).
+  inline uint64_t hitKey(uint32_t detId, int a, int b = 0) {
+    return (static_cast<uint64_t>(detId) << 32) ^ (static_cast<uint32_t>(a) * 4099u + static_cast<uint32_t>(b));
+  }
+} // namespace
 
 MuonHLTNtupler::MuonHLTNtupler(const edm::ParameterSet& iConfig):
 DebugMode(iConfig.getParameter<bool>("DebugMode")),
@@ -97,6 +265,7 @@ runME0_(iConfig.getParameter<bool>("runME0")),
 dtGeomToken_ (esConsumes<DTGeometry,  MuonGeometryRecord>()),
 cscGeomToken_(esConsumes<CSCGeometry, MuonGeometryRecord>()),
 gemGeomToken_(esConsumes<GEMGeometry, MuonGeometryRecord>()),
+//me0GeomToken_(esConsumes<ME0Geometry, MuonGeometryRecord>()),
 
 t_dtRecHits_ (consumes<DTRecHitCollection>   (iConfig.getParameter<edm::InputTag>("dtRecHits"))),
 t_cscRecHits_(consumes<CSCRecHit2DCollection>(iConfig.getParameter<edm::InputTag>("cscRecHits"))),
@@ -619,6 +788,16 @@ void MuonHLTNtupler::Make_Branch()
   if (runME0_)
     me0Segs_.setBranch(ntuple_, "me0Seg", "nME0Segments");
 
+  // -- muon rechits with TruthGraph origin
+  dtRecHits_.setBranch(ntuple_, "dtRh", "nDTRecHits");
+  ntuple_->Branch("dtRh_xLeft", &dtRh_xLeft_);
+  ntuple_->Branch("dtRh_xRight", &dtRh_xRight_);
+  cscRecHits_.setBranch(ntuple_, "cscRh", "nCSCRecHits");
+  rpcRecHits_.setBranch(ntuple_, "rpcRh", "nRPCRecHits");
+  gemRecHits_.setBranch(ntuple_, "gemRh", "nGEMRecHits");
+  if (runME0_)
+    me0RecHits_.setBranch(ntuple_, "me0Rh", "nME0RecHits");
+
   // -- generic muon-like collections (default: L3Muon, L2Muon, TkMuon,
   //    iterL3OI, iterL3IOFromL2, iterL3FromL2 -- see ntupler_cfi.py). One
   //    set of branches per configured collection name; the branch *schema*
@@ -829,9 +1008,9 @@ void MuonHLTNtupler::Fill_Muon(const edm::Event &iEvent, bool isData)
               continue;
             const DetId id = hit.geographicalId();
             if (id.det() == DetId::Tracker)
-              trkHits.push_back(truth::RecoHit{id.rawId(), 1.f, 1.f});
+              trkHits.push_back(truth::RecoHit{id.rawId(), 1.f, 1});
             else if (auto muId = muonHitDetId(hit))
-              muHits.push_back(truth::RecoHit{*muId, 1.f, 1.f});
+              muHits.push_back(truth::RecoHit{*muId, 1.f, 1});
           }
         }
         
@@ -1253,6 +1432,283 @@ void MuonHLTNtupler::fillTruth(truth::Graph const& graph,
   muon_fromBSM_[_nMuon] = fromBSM;
   // Simple "prompt" definition: generator muon not from a hadron or a tau.
   muon_isPrompt_[_nMuon] = p.hasGen() && !fromB && !fromC && !fromLightHadron && !fromTau;
+}
+
+// =============================================================================
+// Fill_MuonSystem: DT / CSC / GEM (/ ME0) segments and DT / CSC / RPC / GEM / ME0 recHits
+// =============================================================================
+void MuonHLTNtupler::Fill_MuonSystem(const edm::Event& iEvent, const edm::EventSetup& iSetup, bool isData) {
+  // ---- truth context (MC only)
+  truth::Graph const* graph = nullptr;
+  CellMap cells;
+  std::vector<int> offlineHeads;
+  if (!isData) {
+    auto const hG = iEvent.getHandle(graphToken_);
+    auto const hI = iEvent.getHandle(hitIndexToken_);
+    if (hG.isValid() && hI.isValid()) {
+      graph = &*hG;
+      cells = buildMuonCellMap(*hI);
+      offlineHeads.assign(nMuon_, -1);
+      for (int i = 0; i < nMuon_; ++i) {
+        if (muon_simId_[i] >= 0 && std::abs(muon_simPdgId_[i]) == 13)
+          offlineHeads[i] = static_cast<int>(chainHead(*graph, static_cast<uint32_t>(muon_simId_[i])));
+        muon_truthHead_[i] = offlineHeads[i];
+      }
+    }
+  }
+  auto truthOf = [&](std::vector<uint32_t> const& ids) {
+    return graph ? classifySegment(*graph, cells, ids, offlineHeads) : SegTruth{};
+  };
+  auto truthOf1 = [&](uint32_t id) { return truthOf(std::vector<uint32_t>{id}); };
+ 
+  // CSC sim hits of ME1/1 live in ring 1; reco splits ME1/1a off as ring 4.
+  auto cscSimLayer = [](CSCDetId l) {
+    if (l.station() == 1 && l.ring() == 4)
+      l = CSCDetId(l.endcap(), 1, 1, l.chamber(), l.layer());
+    return l.rawId();
+  };
+
+  // rechit key -> index of the segment that uses it
+  std::unordered_map<uint64_t, int> dtHitToSeg, cscHitToSeg, gemHitToSeg, me0HitToSeg;
+ 
+  auto const& dtGeom = iSetup.getData(dtGeomToken_);
+  auto const& cscGeom = iSetup.getData(cscGeomToken_);
+  auto const& gemGeom = iSetup.getData(gemGeomToken_);
+  auto const& rpcGeom = iSetup.getData(rpcGeomToken_);
+  //auto const& me0Geom = iSetup.getData(me0GeomToken_);
+  ME0Geometry const* me0Geom = runME0_ ? &iSetup.getData(me0GeomToken_) : nullptr;
+
+  // ===========================================================================
+  // Segments
+  // ===========================================================================
+ 
+  // ---- DT
+  if (auto const h = iEvent.getHandle(t_dtSegments_); h.isValid()) {
+    for (auto const& seg : *h) {
+      const DTChamberId cid = seg.chamberId();
+      const GeomDet* det = dtGeom.idToDet(cid);
+      const GlobalPoint gp = det->toGlobal(seg.localPosition());
+      const GlobalVector gv = det->toGlobal(seg.localDirection());
+      const int iSeg = dtSegs_.n;
+
+      std::vector<uint32_t> ids;  // DT PSimHits are per wire -> DTWireId
+      int nPhi = 0, nZ = 0;
+      auto addHits = [&](std::vector<DTRecHit1D> const& hits, int& count) {
+        for (auto const& rh : hits) {
+          ids.push_back(rh.wireId().rawId());
+          dtHitToSeg.emplace(hitKey(rh.wireId().rawId(), 0), iSeg);
+          ++count;
+        }
+      };
+      if (seg.hasPhi() && seg.phiSegment())
+        addHits(seg.phiSegment()->specificRecHits(), nPhi);
+      if (seg.hasZed() && seg.zSegment())
+        addHits(seg.zSegment()->specificRecHits(), nZ);
+ 
+      dtSegs_.fill(gp, gv, seg.chi2(), seg.degreesOfFreedom(), nPhi + nZ,
+                   0, cid.station(), cid.wheel(), cid.sector(), truthOf(ids));
+      dtSeg_nHitsPhi_.push_back(nPhi);
+      dtSeg_nHitsZ_.push_back(nZ);
+    }
+  }
+
+  // ---- CSC
+  if (auto const h = iEvent.getHandle(t_cscSegments_); h.isValid()) {
+    for (auto const& seg : *h) {
+      const CSCDetId cid = seg.cscDetId();
+      const GeomDet* det = cscGeom.idToDet(cid);
+      const GlobalPoint gp = det->toGlobal(seg.localPosition());
+      const GlobalVector gv = det->toGlobal(seg.localDirection());
+      const int iSeg = cscSegs_.n;
+ 
+      std::vector<uint32_t> ids;  // CSC PSimHits are per layer
+      for (auto const& rh : seg.specificRecHits()) {
+        ids.push_back(cscSimLayer(rh.cscDetId()));
+        cscHitToSeg.emplace(hitKey(rh.cscDetId().rawId(), rh.channels(0), rh.hitWire()), iSeg);
+      }
+ 
+      cscSegs_.fill(gp, gv, seg.chi2(), seg.degreesOfFreedom(), seg.nRecHits(),
+                    cid.endcap(), cid.station(), cid.ring(), cid.chamber(), truthOf(ids));
+    }
+  }
+
+  // ---- GEM (GE1/1, GE2/1 and, in recent Phase-2 geometries, GE0 = station 0)
+  if (auto const h = iEvent.getHandle(t_gemSegments_); h.isValid()) {
+    for (auto const& seg : *h) {
+      const GEMDetId gid = seg.gemDetId();
+      const GeomDet* det = gemGeom.idToDet(gid);
+      if (!det)
+        continue;
+      const GlobalPoint gp = det->toGlobal(seg.localPosition());
+      const GlobalVector gv = det->toGlobal(seg.localDirection());
+      const int iSeg = gemSegs_.n;
+ 
+      std::vector<uint32_t> ids;  // GEM PSimHits are per eta partition
+      for (auto const& rh : seg.specificRecHits()) {
+        ids.push_back(rh.gemId().rawId());
+        gemHitToSeg.emplace(hitKey(rh.gemId().rawId(), rh.firstClusterStrip(), rh.BunchX()), iSeg);
+      }
+ 
+      gemSegs_.fill(gp, gv, seg.chi2(), seg.degreesOfFreedom(), seg.nRecHits(),
+                    gid.region(), gid.station(), gid.ring(), gid.chamber(), truthOf(ids));
+    }
+  }
+
+  // ---- ME0 (legacy geometry only)
+  if (auto const h = iEvent.getHandle(t_me0Segments_); h.isValid()) {
+    for (auto const& seg : *h) {
+      const ME0DetId mid = seg.me0DetId();
+      const GeomDet* det = me0Geom->idToDet(mid);
+      if (!det)
+        continue;
+      const GlobalPoint gp = det->toGlobal(seg.localPosition());
+      const GlobalVector gv = det->toGlobal(seg.localDirection());
+      const int iSeg = me0Segs_.n;
+ 
+      std::vector<uint32_t> ids;
+      for (auto const& rh : seg.specificRecHits()) {
+        ids.push_back(rh.me0Id().rawId());
+        me0HitToSeg.emplace(hitKey(rh.me0Id().rawId(), std::lround(rh.localPosition().x() * 1000.f)), iSeg);
+      }
+ 
+      me0Segs_.fill(gp, gv, seg.chi2(), seg.degreesOfFreedom(), seg.nRecHits(),
+                    mid.region(), mid.station(), 0, mid.chamber(), truthOf(ids));
+    }
+  }
+  
+
+  auto segOf = [](std::unordered_map<uint64_t, int> const& m, uint64_t key) {
+    auto it = m.find(key);
+    return it == m.end() ? -1 : it->second;
+  };
+
+  // ===========================================================================
+  // RecHits
+  // ===========================================================================
+ 
+  // ---- DT: one DTRecHit1DPair per digi; position = wire, L/R kept separately
+  if (auto const h = iEvent.getHandle(t_dtRecHits_); h.isValid()) {
+    for (auto const& rh : *h) {
+      const DTWireId wid = rh.wireId();
+      const DTLayerId lid = wid.layerId();
+      const GeomDet* det = dtGeom.idToDet(lid);
+      if (!det)
+        continue;
+      const GlobalPoint gp = det->toGlobal(rh.localPosition());
+ 
+      rhTemplate::Ids id;
+      id.region = 0;
+      id.station = wid.station();
+      id.ring = wid.wheel();
+      id.sector = wid.sector();
+      id.layer = 4 * (wid.superLayer() - 1) + wid.layer();
+      id.roll = wid.superLayer();
+      id.channel = wid.wire();
+      id.clusterSize = 1;
+      id.wire = wid.wire();
+ 
+      dtRecHits_.fill(gp, rh.digiTime(), id, segOf(dtHitToSeg, hitKey(wid.rawId(), 0)), truthOf1(wid.rawId()));
+      auto const* left = rh.componentRecHit(DTEnums::Left);
+      auto const* right = rh.componentRecHit(DTEnums::Right);
+      dtRh_xLeft_.push_back(left ? left->localPosition().x() : -999.f);
+      dtRh_xRight_.push_back(right ? right->localPosition().x() : -999.f);
+    }
+  }
+
+  // ---- CSC 2D rechits
+  if (auto const h = iEvent.getHandle(t_cscRecHits_); h.isValid()) {
+    for (auto const& rh : *h) {
+      const CSCDetId lid = rh.cscDetId();
+      const GeomDet* det = cscGeom.idToDet(lid);
+      if (!det)
+        continue;
+      const GlobalPoint gp = det->toGlobal(rh.localPosition());
+ 
+      rhTemplate::Ids id;
+      id.region = lid.endcap();
+      id.station = lid.station();
+      id.ring = lid.ring();
+      id.sector = lid.chamber();
+      id.layer = lid.layer();
+      id.roll = 0;
+      id.channel = rh.nStrips() > 0 ? rh.channels(0) : -1;
+      id.clusterSize = static_cast<int>(rh.nStrips());
+      id.wire = rh.hitWire();
+ 
+      cscRecHits_.fill(gp, rh.tpeak(), id, segOf(cscHitToSeg, hitKey(lid.rawId(), id.channel, rh.hitWire())),
+                       truthOf1(cscSimLayer(lid)));
+    }
+  }
+
+  // ---- RPC (no segments)
+  if (auto const h = iEvent.getHandle(t_rpcRecHits_); h.isValid()) {
+    for (auto const& rh : *h) {
+      const RPCDetId rid = rh.rpcId();
+      const GeomDet* det = rpcGeom.idToDet(rid);
+      if (!det)
+        continue;
+      const GlobalPoint gp = det->toGlobal(rh.localPosition());
+ 
+      rhTemplate::Ids id;
+      id.region = rid.region();
+      id.station = rid.station();
+      id.ring = rid.ring();
+      id.sector = rid.sector();
+      id.layer = rid.layer();
+      id.roll = rid.roll();
+      id.channel = rh.firstClusterStrip();
+      id.clusterSize = rh.clusterSize();
+ 
+      rpcRecHits_.fill(gp, rh.time(), id, -1, truthOf1(rid.rawId()));
+    }
+  }
+
+  // ---- GEM
+  if (auto const h = iEvent.getHandle(t_gemRecHits_); h.isValid()) {
+    for (auto const& rh : *h) {
+      const GEMDetId gid = rh.gemId();
+      const GeomDet* det = gemGeom.idToDet(gid);
+      if (!det)
+        continue;
+      const GlobalPoint gp = det->toGlobal(rh.localPosition());
+ 
+      rhTemplate::Ids id;
+      id.region = gid.region();
+      id.station = gid.station();
+      id.ring = gid.ring();
+      id.sector = gid.chamber();
+      id.layer = gid.layer();
+      id.roll = gid.roll();
+      id.channel = rh.firstClusterStrip();
+      id.clusterSize = rh.clusterSize();
+ 
+      gemRecHits_.fill(gp, rh.BunchX(), id,
+                       segOf(gemHitToSeg, hitKey(gid.rawId(), rh.firstClusterStrip(), rh.BunchX())),
+                       truthOf1(gid.rawId()));
+    }
+  }
+
+  // ---- ME0 (legacy geometry only
+  if (auto const h = iEvent.getHandle(t_me0RecHits_); h.isValid()) {
+    for (auto const& rh : *h) {
+      const ME0DetId mid = rh.me0Id();
+      const GeomDet* det = me0Geom->idToDet(mid);
+      if (!det)
+        continue;
+      const GlobalPoint gp = det->toGlobal(rh.localPosition());
+ 
+      rhTemplate::Ids id;
+      id.region = mid.region();
+      id.station = mid.station();
+      id.sector = mid.chamber();
+      id.layer = mid.layer();
+      id.roll = mid.roll();
+ 
+      me0RecHits_.fill(gp, rh.tof(), id,
+                       segOf(me0HitToSeg, hitKey(mid.rawId(), std::lround(rh.localPosition().x() * 1000.f))),
+                       truthOf1(mid.rawId()));
+    }
+  }
 }
 
 // -- reference: https://github.com/cms-sw/cmssw/blob/master/DataFormats/MuonReco/src/MuonSelectors.cc#L910-L938

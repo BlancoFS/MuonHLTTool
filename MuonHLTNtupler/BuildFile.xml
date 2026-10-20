@@ -25,7 +25,6 @@
 <use name="DataFormats/Common"/>
 <use name="Geometry/Records"/>
 <use name="Geometry/TrackerGeometryBuilder"/>
-<use name="Geometry/CommonDetUnit"/>
 <use name="Geometry/CommonTopologies"/>
 <use name="DataFormats/SiPixelDetId"/>
 <use name="DataFormats/L1TrackTrigger"/>

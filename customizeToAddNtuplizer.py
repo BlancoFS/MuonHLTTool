@@ -10,6 +10,19 @@ def _retagged(tag, newProcessName):
         return tag
     return cms.InputTag(tag.getModuleLabel(), tag.getProductInstanceLabel(), newProcessName)
 
+def customizeForPixelTracks(process, newProcessName="MYHLT"):
+    process.HLTMuonsSequence = cms.Sequence(
+        process.HLTTrackingSequence
+        + process.HLTL2MuonsFromL1TkSequence
+        + process.HLTPhase2L3FromL1TkSequence
+        + process.HLTIter0Phase2L3FromL1TkSequence
+        + process.HLTIter2Phase2L3FromL1TkSequence
+        + process.hltPhase2L3MuonFilter
+        + process.HLTPhase2L3OISequence
+        + process.HLTPhase2L3MuonsSequence
+    )
+    return process
+
 def customizeToAddNtuplizer(process, newProcessName="MYHLT"):
 
     if hasattr(process, "DQMOutput"):

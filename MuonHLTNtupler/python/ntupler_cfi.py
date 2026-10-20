@@ -31,7 +31,7 @@ MYHLT = "MYHLT"
 #                            separate inner/outer/global tracks)
 #   L1TkMuon              -> l1t::TrackerMuonCollection
 # -----------------------------------------------------------------------
-muonCollections = cms.untracked.VPSet(    
+muonCollections = cms.untracked.VPSet(
     cms.PSet(name=cms.string("L1TkMuon"), type=cms.string("L1TkMuon"),
             label=cms.InputTag("l1tTkMuonsGmt", "", MYHLT)),
 
@@ -52,6 +52,9 @@ muonCollections = cms.untracked.VPSet(
 
     cms.PSet(name=cms.string("iterL3IO"), type=cms.string("TrackView"),
             label=cms.InputTag("hltPhase2L3MuonFilter:L3IOTracksFiltered", "", MYHLT)),
+
+    cms.PSet(name=cms.string("pixelTracks"), type=cms.string("TrackView"),
+            label=cms.InputTag("hltPhase2PixelTracks", "", MYHLT)),
 )
 
 # -----------------------------------------------------------------------
@@ -92,6 +95,17 @@ ntuplerBase = cms.EDAnalyzer(
     truthGraph=cms.InputTag("truthLogicalGraphProducer"),
     hitIndex=cms.InputTag("truthLogicalGraphHitIndexProducer"),
     maxScore=cms.double(0.5),
+
+    dtSegments  = cms.InputTag("hltDt4DSegments"),
+    cscSegments = cms.InputTag("hltCscSegments"),
+    gemSegments = cms.InputTag("hltGemSegments"),   # includes GE0 (station 0) in recent Phase-2 geometries
+    me0Segments = cms.InputTag("hltMe0Segments"),   # legacy, only read if runME0 = True
+    runME0      = cms.bool(False),
+    dtRecHits   = cms.InputTag("hltDt1DRecHits"),
+    cscRecHits  = cms.InputTag("hltCsc2DRecHits"),
+    rpcRecHits  = cms.InputTag("hltRpcRecHits"),
+    gemRecHits  = cms.InputTag("hltGemRecHits"),    # includes GE0 in recent Phase-2 geometries
+    me0RecHits  = cms.InputTag("hltMe0RecHits"),    # legacy, only read if runME0 = True
 
     # -- objects from the HLT rerun (process name = "MYHLT" by default)
     myTriggerResults = cms.untracked.InputTag("TriggerResults",       "", MYHLT),
